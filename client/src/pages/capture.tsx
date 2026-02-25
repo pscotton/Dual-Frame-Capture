@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Cloud, CloudOff, Video, Camera, Loader2 } from "lucide-react";
+import { Cloud, CloudOff, Video, Camera, Loader2, Mic, MicOff } from "lucide-react";
 import { useCreateCapture } from "@/hooks/use-captures";
 import { useToast } from "@/hooks/use-toast";
 
@@ -12,6 +12,8 @@ export default function CapturePage() {
   const [cloudSync, setCloudSync] = useState(true);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [hasCameraError, setHasCameraError] = useState(false);
+  const [hasMicError, setHasMicError] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
   const [processing, setProcessing] = useState(false);
   
   const landscapeVideoRef = useRef<HTMLVideoElement>(null);
@@ -20,19 +22,34 @@ export default function CapturePage() {
   const { mutateAsync: createCapture } = useCreateCapture();
   const { toast } = useToast();
 
-  // Initialize camera
+  // Initialize camera and microphone
   useEffect(() => {
     async function setupCamera() {
       try {
         const mediaStream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
-          audio: false // Disabled for prototype to avoid feedback loops
+          audio: true
         });
         setStream(mediaStream);
         setHasCameraError(false);
-      } catch (err) {
-        console.error("Camera access denied or unavailable:", err);
-        setHasCameraError(true);
+        setHasMicError(false);
+      } catch (err: any) {
+        console.error("Access denied or unavailable:", err);
+        if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+          // Check if it was audio specifically
+          try {
+            const videoOnly = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } }
+            });
+            setStream(videoOnly);
+            setHasCameraError(false);
+            setHasMicError(true);
+          } catch (videoErr) {
+            setHasCameraError(true);
+          }
+        } else {
+          setHasCameraError(true);
+        }
       }
     }
     setupCamera();
@@ -43,6 +60,15 @@ export default function CapturePage() {
       }
     };
   }, []);
+
+  // Handle Mute/Unmute
+  useEffect(() => {
+    if (stream) {
+      stream.getAudioTracks().forEach(track => {
+        track.enabled = !isMuted;
+      });
+    }
+  }, [isMuted, stream]);
 
   // Attach stream to video elements
   useEffect(() => {
@@ -86,7 +112,7 @@ export default function CapturePage() {
         await createCapture(payload);
         toast({
           title: "Saved to Cloud",
-          description: "Both formats have been uploaded successfully.",
+          description: `Both formats have been uploaded successfully ${mode === 'video' ? 'with audio' : ''}.`,
         });
       } catch (error) {
         toast({
@@ -98,7 +124,7 @@ export default function CapturePage() {
     } else {
       toast({
         title: "Saved Locally",
-        description: "Outputs saved to device gallery.",
+        description: `Outputs saved to device gallery ${mode === 'video' ? 'with audio' : ''}.`,
       });
     }
     
@@ -114,17 +140,25 @@ export default function CapturePage() {
           FlipCast<span className="text-white/50">Duo</span>
         </div>
         
-        <button 
-          onClick={() => setCloudSync(!cloudSync)}
-          className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all backdrop-blur-md border ${
-            cloudSync 
-              ? "bg-white/20 border-white/30 text-white" 
-              : "bg-black/40 border-white/10 text-white/50"
-          }`}
-        >
-          {cloudSync ? <Cloud className="w-4 h-4" /> : <CloudOff className="w-4 h-4" />}
-          <span className="hidden sm:inline">Cloud Sync</span>
-        </button>
+        <div className="flex gap-2">
+          {hasMicError && (
+            <div className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium bg-red-500/20 border border-red-500/30 text-red-400 backdrop-blur-md">
+              <MicOff className="w-3 h-3" />
+              Mic Denied
+            </div>
+          )}
+          <button 
+            onClick={() => setCloudSync(!cloudSync)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all backdrop-blur-md border ${
+              cloudSync 
+                ? "bg-white/20 border-white/30 text-white" 
+                : "bg-black/40 border-white/10 text-white/50"
+            }`}
+          >
+            {cloudSync ? <Cloud className="w-4 h-4" /> : <CloudOff className="w-4 h-4" />}
+            <span className="hidden sm:inline">Cloud Sync</span>
+          </button>
+        </div>
       </header>
 
       {/* Main Viewfinder Area */}
@@ -175,30 +209,49 @@ export default function CapturePage() {
       {/* Camera Controls */}
       <div className="absolute bottom-24 inset-x-0 flex flex-col items-center gap-6 z-20">
         
-        {/* Mode Selector */}
-        <div className="flex bg-black/50 backdrop-blur-xl p-1 rounded-full border border-white/10 shadow-xl">
-          {(["video", "photo"] as Mode[]).map((m) => (
+        <div className="flex items-center gap-4">
+          {/* Mute Toggle */}
+          {mode === "video" && !hasMicError && (
             <button
-              key={m}
-              onClick={() => !isRecording && setMode(m)}
-              disabled={isRecording}
-              className={`relative px-6 py-2 rounded-full text-sm font-medium uppercase tracking-wider transition-colors ${
-                mode === m ? "text-black" : "text-white/70 hover:text-white"
-              } ${isRecording ? "opacity-50 cursor-not-allowed" : ""}`}
+              onClick={() => setIsMuted(!isMuted)}
+              className={`p-3 rounded-full backdrop-blur-xl border transition-all ${
+                isMuted 
+                  ? "bg-red-500/20 border-red-500/30 text-red-500" 
+                  : "bg-black/50 border-white/10 text-white hover:bg-black/70"
+              }`}
             >
-              {mode === m && (
-                <motion.div
-                  layoutId="active-mode"
-                  className="absolute inset-0 bg-white rounded-full z-0"
-                  transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                />
-              )}
-              <span className="relative z-10 flex items-center gap-2">
-                {m === "video" ? <Video className="w-4 h-4" /> : <Camera className="w-4 h-4" />}
-                {m}
-              </span>
+              {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
             </button>
-          ))}
+          )}
+
+          {/* Mode Selector */}
+          <div className="flex bg-black/50 backdrop-blur-xl p-1 rounded-full border border-white/10 shadow-xl">
+            {(["video", "photo"] as Mode[]).map((m) => (
+              <button
+                key={m}
+                onClick={() => !isRecording && setMode(m)}
+                disabled={isRecording}
+                className={`relative px-6 py-2 rounded-full text-sm font-medium uppercase tracking-wider transition-colors ${
+                  mode === m ? "text-black" : "text-white/70 hover:text-white"
+                } ${isRecording ? "opacity-50 cursor-not-allowed" : ""}`}
+              >
+                {mode === m && (
+                  <motion.div
+                    layoutId="active-mode"
+                    className="absolute inset-0 bg-white rounded-full z-0"
+                    transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                  />
+                )}
+                <span className="relative z-10 flex items-center gap-2">
+                  {m === "video" ? <Video className="w-4 h-4" /> : <Camera className="w-4 h-4" />}
+                  {m}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {/* Placeholder for symmetry */}
+          {mode === "video" && !hasMicError && <div className="w-11" />}
         </div>
 
         {/* Shutter Button */}
