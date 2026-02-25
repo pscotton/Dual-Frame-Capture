@@ -24,6 +24,9 @@ export default function CapturePage() {
   const { mutateAsync: createCapture } = useCreateCapture();
   const { toast } = useToast();
 
+  const [recorder, setRecorder] = useState<MediaRecorder | null>(null);
+  const [chunks, setChunks] = useState<Blob[]>([]);
+
   // Initialize camera and microphone
   useEffect(() => {
     async function setupCamera() {
@@ -63,30 +66,29 @@ export default function CapturePage() {
     };
   }, []);
 
-  // Handle Mute/Unmute
-  useEffect(() => {
-    if (stream) {
-      stream.getAudioTracks().forEach(track => {
-        track.enabled = !isMuted;
-      });
-    }
-  }, [isMuted, stream]);
-
-  // Attach stream to video elements
-  useEffect(() => {
-    if (stream && landscapeVideoRef.current && portraitVideoRef.current) {
-      landscapeVideoRef.current.srcObject = stream;
-      portraitVideoRef.current.srcObject = stream;
-    }
-  }, [stream]);
-
   const handleCapture = async () => {
     if (mode === "video") {
       if (isRecording) {
         setIsRecording(false);
-        await processCapture();
+        if (recorder) {
+          recorder.stop();
+        }
       } else {
         setIsRecording(true);
+        const newChunks: Blob[] = [];
+        setChunks(newChunks);
+        const newRecorder = new MediaRecorder(stream!, { mimeType: 'video/webm;codecs=vp8,opus' });
+        newRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) {
+            newChunks.push(e.data);
+          }
+        };
+        newRecorder.onstop = async () => {
+          const fullBlob = new Blob(newChunks, { type: 'video/webm' });
+          await processCapture(fullBlob);
+        };
+        setRecorder(newRecorder);
+        newRecorder.start();
       }
     } else {
       // Photo mode - instant capture
@@ -94,12 +96,11 @@ export default function CapturePage() {
     }
   };
 
-  const processCapture = async () => {
+  const processCapture = async (videoBlob?: Blob) => {
     setProcessing(true);
     
     try {
       const now = new Date();
-      const timestamp = now.toISOString().replace(/[:.]/g, '').replace('T', '_').split('Z')[0];
       const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
       const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '');
       const formattedTS = `${dateStr}_${timeStr}`;
@@ -107,39 +108,26 @@ export default function CapturePage() {
       let landscapeBlob: Blob;
       let portraitBlob: Blob;
 
-      if (mode === "video") {
-        // Real video recording logic
-        const recorder = new MediaRecorder(stream!, { mimeType: 'video/webm;codecs=vp8,opus' });
-        const chunks: Blob[] = [];
-        recorder.ondataavailable = (e) => chunks.push(e.data);
-        
-        const recordingPromise = new Promise<Blob>((resolve) => {
-          recorder.onstop = () => resolve(new Blob(chunks, { type: 'video/webm' }));
-        });
-
-        recorder.start();
-        // Wait a bit to simulate recording length or use the actual recording duration if we were tracking it properly
-        // For the prototype, we just capture what's available since the button was already pressed
-        await new Promise(resolve => setTimeout(resolve, 1000)); 
-        recorder.stop();
-        landscapeBlob = await recordingPromise;
-        portraitBlob = landscapeBlob; // In a real app, we'd crop server-side or use two recorders with different constraints
+      if (mode === "video" && videoBlob) {
+        landscapeBlob = videoBlob;
+        portraitBlob = videoBlob; // In a browser-only prototype, we use the same master for both downloads
       } else {
         // Real photo capture logic
-        const canvas = document.createElement('canvas');
         const video = landscapeVideoRef.current!;
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth || 1920;
+        canvas.height = video.videoHeight || 1080;
         canvas.getContext('2d')?.drawImage(video, 0, 0);
-        
         landscapeBlob = await new Promise(r => canvas.toBlob(r!, 'image/png'));
         
         // Portrait crop
         const pCanvas = document.createElement('canvas');
-        pCanvas.width = video.videoHeight * (9/16);
-        pCanvas.height = video.videoHeight;
-        const xOffset = (video.videoWidth - pCanvas.width) / 2;
-        pCanvas.getContext('2d')?.drawImage(video, xOffset, 0, pCanvas.width, pCanvas.height, 0, 0, pCanvas.width, pCanvas.height);
+        const pHeight = canvas.height;
+        const pWidth = pHeight * (9/16);
+        pCanvas.width = pWidth;
+        pCanvas.height = pHeight;
+        const xOffset = (canvas.width - pWidth) / 2;
+        pCanvas.getContext('2d')?.drawImage(video, xOffset, 0, pWidth, pHeight, 0, 0, pWidth, pHeight);
         portraitBlob = await new Promise(r => pCanvas.toBlob(r!, 'image/png'));
       }
 
@@ -150,7 +138,7 @@ export default function CapturePage() {
         a.href = url;
         a.download = `FlipCastDuo_${suffix}_${formattedTS}.${ext}`;
         a.click();
-        URL.revokeObjectURL(url);
+        setTimeout(() => URL.revokeObjectURL(url), 100);
       };
 
       const ext = mode === "video" ? "webm" : "png";
@@ -175,20 +163,11 @@ export default function CapturePage() {
 
       if (cloudSync) {
         await createCapture(payload);
-        toast({
-          title: "Saved to Cloud",
-          description: `Both formats have been uploaded successfully ${mode === 'video' ? 'with audio' : ''}.`,
-        });
       } else {
-        // Manual cache update for local-only
         queryClient.setQueryData([api.captures.list.path], (old: any) => [
           { ...payload, id: Math.random(), createdAt: new Date() },
           ...(old || [])
         ]);
-        toast({
-          title: "Saved Locally",
-          description: `Outputs saved to device gallery ${mode === 'video' ? 'with audio' : ''}.`,
-        });
       }
     } catch (error) {
       console.error("Capture failed:", error);
