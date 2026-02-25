@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Cloud, CloudOff, Video, Camera, Loader2, Mic, MicOff } from "lucide-react";
 import { useCreateCapture } from "@/hooks/use-captures";
 import { useToast } from "@/hooks/use-toast";
+import { queryClient } from "@/lib/queryClient";
+import { api } from "@shared/routes";
 
 type Mode = "video" | "photo";
 
@@ -95,40 +97,109 @@ export default function CapturePage() {
   const processCapture = async () => {
     setProcessing(true);
     
-    // Simulate processing time
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    // Mock URLs for prototype as per implementation notes
-    const mockId = Math.random().toString(36).substring(7);
-    const payload = {
-      title: `${mode.charAt(0).toUpperCase() + mode.slice(1)} Capture - ${new Date().toLocaleTimeString()}`,
-      type: mode,
-      landscapeUrl: `https://images.unsplash.com/photo-1516724562728-afc824a36e84?w=1920&h=1080&fit=crop&q=80&sig=${mockId}`,
-      portraitUrl: `https://images.unsplash.com/photo-1516724562728-afc824a36e84?w=1080&h=1920&fit=crop&q=80&sig=${mockId}`,
-    };
+    try {
+      const now = new Date();
+      const timestamp = now.toISOString().replace(/[:.]/g, '').replace('T', '_').split('Z')[0];
+      const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
+      const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '');
+      const formattedTS = `${dateStr}_${timeStr}`;
 
-    if (cloudSync) {
-      try {
+      let landscapeBlob: Blob;
+      let portraitBlob: Blob;
+
+      if (mode === "video") {
+        // Real video recording logic
+        const recorder = new MediaRecorder(stream!, { mimeType: 'video/webm;codecs=vp8,opus' });
+        const chunks: Blob[] = [];
+        recorder.ondataavailable = (e) => chunks.push(e.data);
+        
+        const recordingPromise = new Promise<Blob>((resolve) => {
+          recorder.onstop = () => resolve(new Blob(chunks, { type: 'video/webm' }));
+        });
+
+        recorder.start();
+        // Wait a bit to simulate recording length or use the actual recording duration if we were tracking it properly
+        // For the prototype, we just capture what's available since the button was already pressed
+        await new Promise(resolve => setTimeout(resolve, 1000)); 
+        recorder.stop();
+        landscapeBlob = await recordingPromise;
+        portraitBlob = landscapeBlob; // In a real app, we'd crop server-side or use two recorders with different constraints
+      } else {
+        // Real photo capture logic
+        const canvas = document.createElement('canvas');
+        const video = landscapeVideoRef.current!;
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext('2d')?.drawImage(video, 0, 0);
+        
+        landscapeBlob = await new Promise(r => canvas.toBlob(r!, 'image/png'));
+        
+        // Portrait crop
+        const pCanvas = document.createElement('canvas');
+        pCanvas.width = video.videoHeight * (9/16);
+        pCanvas.height = video.videoHeight;
+        const xOffset = (video.videoWidth - pCanvas.width) / 2;
+        pCanvas.getContext('2d')?.drawImage(video, xOffset, 0, pCanvas.width, pCanvas.height, 0, 0, pCanvas.width, pCanvas.height);
+        portraitBlob = await new Promise(r => pCanvas.toBlob(r!, 'image/png'));
+      }
+
+      // Download files
+      const download = (blob: Blob, suffix: string, ext: string) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `FlipCastDuo_${suffix}_${formattedTS}.${ext}`;
+        a.click();
+        URL.revokeObjectURL(url);
+      };
+
+      const ext = mode === "video" ? "webm" : "png";
+      download(landscapeBlob, "Landscape", ext);
+      download(portraitBlob, "Portrait", ext);
+
+      toast({
+        title: "Saved to Downloads",
+        description: `Both ${mode} formats have been saved to your computer.`,
+      });
+
+      // Update Gallery / Cloud
+      const landscapeUrl = URL.createObjectURL(landscapeBlob);
+      const portraitUrl = URL.createObjectURL(portraitBlob);
+      
+      const payload = {
+        title: `${mode.charAt(0).toUpperCase() + mode.slice(1)} Capture - ${now.toLocaleTimeString()}`,
+        type: mode,
+        landscapeUrl,
+        portraitUrl,
+      };
+
+      if (cloudSync) {
         await createCapture(payload);
         toast({
           title: "Saved to Cloud",
           description: `Both formats have been uploaded successfully ${mode === 'video' ? 'with audio' : ''}.`,
         });
-      } catch (error) {
+      } else {
+        // Manual cache update for local-only
+        queryClient.setQueryData([api.captures.list.path], (old: any) => [
+          { ...payload, id: Math.random(), createdAt: new Date() },
+          ...(old || [])
+        ]);
         toast({
-          title: "Upload Failed",
-          description: "Could not save to cloud. Saved locally instead.",
-          variant: "destructive"
+          title: "Saved Locally",
+          description: `Outputs saved to device gallery ${mode === 'video' ? 'with audio' : ''}.`,
         });
       }
-    } else {
+    } catch (error) {
+      console.error("Capture failed:", error);
       toast({
-        title: "Saved Locally",
-        description: `Outputs saved to device gallery ${mode === 'video' ? 'with audio' : ''}.`,
+        title: "Capture Failed",
+        description: "An error occurred while saving your media.",
+        variant: "destructive"
       });
+    } finally {
+      setProcessing(false);
     }
-    
-    setProcessing(false);
   };
 
   return (
