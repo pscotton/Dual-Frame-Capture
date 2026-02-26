@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Cloud, CloudOff, Video, Camera, Loader2, Mic, MicOff } from "lucide-react";
 import { useCreateCapture } from "@/hooks/use-captures";
@@ -7,6 +7,190 @@ import { queryClient } from "@/lib/queryClient";
 import { api } from "@shared/routes";
 
 type Mode = "video" | "photo";
+
+function pickBestMimeType() {
+  const candidates = [
+    "video/webm;codecs=vp9,opus",
+    "video/webm;codecs=vp8,opus",
+    "video/webm",
+  ];
+  for (const c of candidates) {
+    if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported?.(c)) return c;
+  }
+  return "";
+}
+
+async function waitForVideoReady(video: HTMLVideoElement) {
+  if (video.videoWidth > 0 && video.videoHeight > 0) return;
+
+  await new Promise<void>((resolve) => {
+    const onReady = () => {
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        cleanup();
+        resolve();
+      }
+    };
+    const cleanup = () => {
+      video.removeEventListener("loadedmetadata", onReady);
+      video.removeEventListener("canplay", onReady);
+      video.removeEventListener("loadeddata", onReady);
+    };
+
+    video.addEventListener("loadedmetadata", onReady);
+    video.addEventListener("canplay", onReady);
+    video.addEventListener("loadeddata", onReady);
+
+    const start = Date.now();
+    const t = setInterval(() => {
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        clearInterval(t);
+        cleanup();
+        resolve();
+      } else if (Date.now() - start > 3000) {
+        clearInterval(t);
+        cleanup();
+        resolve();
+      }
+    }, 100);
+  });
+}
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function lerp(a: number, b: number, t: number) {
+  return a + (b - a) * t;
+}
+
+function drawAspectCropZoomed(
+  ctx: CanvasRenderingContext2D,
+  video: HTMLVideoElement,
+  outW: number,
+  outH: number,
+  zoom: number,
+) {
+  const vW = video.videoWidth;
+  const vH = video.videoHeight;
+  if (!vW || !vH) return;
+
+  const outAspect = outW / outH;
+  const vAspect = vW / vH;
+
+  let baseW: number;
+  let baseH: number;
+
+  if (vAspect > outAspect) {
+    baseH = vH;
+    baseW = vH * outAspect;
+  } else {
+    baseW = vW;
+    baseH = vW / outAspect;
+  }
+
+  const z = Math.max(1, zoom);
+  const srcW = baseW / z;
+  const srcH = baseH / z;
+
+  const srcX = (vW - srcW) / 2;
+  const srcY = (vH - srcH) / 2;
+
+  ctx.drawImage(video, srcX, srcY, srcW, srcH, 0, 0, outW, outH);
+}
+
+/**
+ * Premium mini zoom UI:
+ * - Tiny “1.0×” chip always visible
+ * - Slider only appears while interacting and auto-hides
+ */
+function ZoomMiniHUD({
+  zoom,
+  onSetZoom,
+  anchorClass,
+  ariaLabel,
+}: {
+  zoom: number;
+  onSetZoom: (v: number) => void;
+  anchorClass: string;
+  ariaLabel: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const hideTimer = useRef<number | null>(null);
+
+  const showTemporarily = () => {
+    setOpen(true);
+    if (hideTimer.current) window.clearTimeout(hideTimer.current);
+    hideTimer.current = window.setTimeout(() => setOpen(false), 1500);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (hideTimer.current) window.clearTimeout(hideTimer.current);
+    };
+  }, []);
+
+  const pct = ((zoom - 1) / (3 - 1)) * 100;
+
+  return (
+    <div className={`absolute ${anchorClass} z-30 pointer-events-auto select-none`}>
+      {/* Tiny chip */}
+      <button
+        type="button"
+        onClick={() => {
+          showTemporarily();
+        }}
+        className="h-9 px-3 rounded-full border border-white/12 bg-black/35 backdrop-blur-xl text-white/92 text-[13px] font-semibold tracking-wide shadow-[0_10px_30px_rgba(0,0,0,0.55)]"
+        aria-label={ariaLabel}
+      >
+        {zoom.toFixed(1)}×
+      </button>
+
+      {/* Minimal slider appears only when active */}
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: 6, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 6, scale: 0.98 }}
+            transition={{ duration: 0.18 }}
+            className="mt-2"
+          >
+            <div className="w-[220px] max-w-[70vw] rounded-full border border-white/10 bg-black/35 backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.55)] overflow-hidden">
+              <div className="relative h-10">
+                <div className="absolute inset-y-0 left-0 bg-white/12" style={{ width: `${pct}%` }} />
+                <input
+                  type="range"
+                  min={1}
+                  max={3}
+                  step={0.05}
+                  value={zoom}
+                  onChange={(e) => {
+                    onSetZoom(parseFloat(e.target.value));
+                    showTemporarily();
+                  }}
+                  onPointerDown={() => showTemporarily()}
+                  onPointerMove={() => showTemporarily()}
+                  className="absolute inset-0 w-full h-full cursor-pointer opacity-0"
+                  aria-label="Zoom"
+                />
+                <div
+                  className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white shadow-[0_10px_22px_rgba(0,0,0,0.55)]"
+                  style={{ left: `calc(${pct}% - 8px)` }}
+                />
+                <div className="absolute inset-y-0 left-3 flex items-center text-[11px] text-white/45">
+                  1×
+                </div>
+                <div className="absolute inset-y-0 right-3 flex items-center text-[11px] text-white/45">
+                  3×
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 export default function CapturePage() {
   const [mode, setMode] = useState<Mode>("video");
@@ -17,143 +201,414 @@ export default function CapturePage() {
   const [hasMicError, setHasMicError] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [processing, setProcessing] = useState(false);
-  
+
+  // Targets (user intent) + smoothed (display + recording)
+  const [landscapeZoomTarget, setLandscapeZoomTarget] = useState(1);
+  const [portraitZoomTarget, setPortraitZoomTarget] = useState(1);
+  const [landscapeZoomDisplay, setLandscapeZoomDisplay] = useState(1);
+  const [portraitZoomDisplay, setPortraitZoomDisplay] = useState(1);
+
+  const landscapeZoomSmoothedRef = useRef(1);
+  const portraitZoomSmoothedRef = useRef(1);
+
+  const ZOOM_MIN = 1;
+  const ZOOM_MAX = 3;
+
+  // Slightly more responsive smoothing than before
+  const SMOOTHING = 0.42;
+
   const landscapeVideoRef = useRef<HTMLVideoElement>(null);
   const portraitVideoRef = useRef<HTMLVideoElement>(null);
-  
+
+  // View containers (for wheel/pinch)
+  const landscapeBoxRef = useRef<HTMLDivElement>(null);
+  const portraitBoxRef = useRef<HTMLDivElement>(null);
+
+  // Pinch state
+  const pinchL = useRef<{ startDist: number; startZoom: number } | null>(null);
+  const pinchP = useRef<{ startDist: number; startZoom: number } | null>(null);
+
+  // Offscreen canvases for recording
+  const landscapeCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const portraitCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const drawLoopRef = useRef<number | null>(null);
+
+  const recLandscapeRef = useRef<MediaRecorder | null>(null);
+  const recPortraitRef = useRef<MediaRecorder | null>(null);
+  const chunksLandscapeRef = useRef<Blob[]>([]);
+  const chunksPortraitRef = useRef<Blob[]>([]);
+
   const { mutateAsync: createCapture } = useCreateCapture();
   const { toast } = useToast();
 
-  const [recorder, setRecorder] = useState<MediaRecorder | null>(null);
-  const [chunks, setChunks] = useState<Blob[]>([]);
-
-  // Initialize camera and microphone
+  // Smooth animation loop
   useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      const lNow = landscapeZoomSmoothedRef.current;
+      const pNow = portraitZoomSmoothedRef.current;
+
+      const lNext = lerp(lNow, landscapeZoomTarget, SMOOTHING);
+      const pNext = lerp(pNow, portraitZoomTarget, SMOOTHING);
+
+      landscapeZoomSmoothedRef.current = lNext;
+      portraitZoomSmoothedRef.current = pNext;
+
+      setLandscapeZoomDisplay(lNext);
+      setPortraitZoomDisplay(pNext);
+
+      raf = requestAnimationFrame(tick);
+    };
+
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [landscapeZoomTarget, portraitZoomTarget]);
+
+  // Camera init
+  useEffect(() => {
+    let mounted = true;
+
     async function setupCamera() {
       try {
         const mediaStream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
-          audio: true
+          audio: true,
         });
+        if (!mounted) return;
         setStream(mediaStream);
         setHasCameraError(false);
         setHasMicError(false);
       } catch (err: any) {
         console.error("Access denied or unavailable:", err);
-        if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
-          // Check if it was audio specifically
-          try {
-            const videoOnly = await navigator.mediaDevices.getUserMedia({
-              video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } }
-            });
-            setStream(videoOnly);
-            setHasCameraError(false);
-            setHasMicError(true);
-          } catch (videoErr) {
-            setHasCameraError(true);
-          }
-        } else {
+        if (!mounted) return;
+
+        try {
+          const videoOnly = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+          });
+          if (!mounted) return;
+          setStream(videoOnly);
+          setHasCameraError(false);
+          setHasMicError(true);
+        } catch {
+          if (!mounted) return;
           setHasCameraError(true);
         }
       }
     }
+
     setupCamera();
 
     return () => {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-      }
+      mounted = false;
+      setStream((prev) => {
+        prev?.getTracks().forEach((t) => t.stop());
+        return prev;
+      });
     };
   }, []);
 
+  // Attach stream to BOTH preview videos
+  useEffect(() => {
+    const lv = landscapeVideoRef.current;
+    const pv = portraitVideoRef.current;
+    if (!stream || !lv || !pv) return;
+
+    lv.srcObject = stream;
+    pv.srcObject = stream;
+
+    const tryPlay = async () => {
+      try {
+        await lv.play();
+      } catch {}
+      try {
+        await pv.play();
+      } catch {}
+    };
+    void tryPlay();
+
+    stream.getAudioTracks().forEach((t) => (t.enabled = !isMuted));
+
+    return () => {
+      if (lv) lv.srcObject = null;
+      if (pv) pv.srcObject = null;
+    };
+  }, [stream]);
+
+  // Toggle mute
+  useEffect(() => {
+    if (!stream) return;
+    stream.getAudioTracks().forEach((t) => (t.enabled = !isMuted));
+  }, [isMuted, stream]);
+
+  // Wheel zoom (desktop testing)
+  useEffect(() => {
+    const lEl = landscapeBoxRef.current;
+    const pEl = portraitBoxRef.current;
+    if (!lEl || !pEl) return;
+
+    const onWheelLandscape = (e: WheelEvent) => {
+      // Only if cursor is over the view
+      e.preventDefault();
+      const delta = e.deltaY;
+      const step = delta > 0 ? -0.08 : 0.08;
+      setLandscapeZoomTarget((z) => clamp(Number((z + step).toFixed(2)), ZOOM_MIN, ZOOM_MAX));
+    };
+    const onWheelPortrait = (e: WheelEvent) => {
+      e.preventDefault();
+      const delta = e.deltaY;
+      const step = delta > 0 ? -0.08 : 0.08;
+      setPortraitZoomTarget((z) => clamp(Number((z + step).toFixed(2)), ZOOM_MIN, ZOOM_MAX));
+    };
+
+    lEl.addEventListener("wheel", onWheelLandscape, { passive: false });
+    pEl.addEventListener("wheel", onWheelPortrait, { passive: false });
+
+    return () => {
+      lEl.removeEventListener("wheel", onWheelLandscape as any);
+      pEl.removeEventListener("wheel", onWheelPortrait as any);
+    };
+  }, []);
+
+  // Pinch-to-zoom (mobile/tablet)
+  const handleTouchStart = (which: "l" | "p") => (e: React.TouchEvent) => {
+    if (e.touches.length !== 2) return;
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.hypot(dx, dy);
+
+    if (which === "l") pinchL.current = { startDist: dist, startZoom: landscapeZoomTarget };
+    else pinchP.current = { startDist: dist, startZoom: portraitZoomTarget };
+  };
+
+  const handleTouchMove = (which: "l" | "p") => (e: React.TouchEvent) => {
+    if (e.touches.length !== 2) return;
+    e.preventDefault();
+
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.hypot(dx, dy);
+
+    const pinch = which === "l" ? pinchL.current : pinchP.current;
+    if (!pinch) return;
+
+    const ratio = dist / pinch.startDist;
+    const next = clamp(pinch.startZoom * ratio, ZOOM_MIN, ZOOM_MAX);
+
+    if (which === "l") setLandscapeZoomTarget(Number(next.toFixed(2)));
+    else setPortraitZoomTarget(Number(next.toFixed(2)));
+  };
+
+  const handleTouchEnd = (which: "l" | "p") => (_e: React.TouchEvent) => {
+    if (which === "l") pinchL.current = null;
+    else pinchP.current = null;
+  };
+
+  function ensureCanvases(width: number, height: number) {
+    if (!landscapeCanvasRef.current) landscapeCanvasRef.current = document.createElement("canvas");
+    if (!portraitCanvasRef.current) portraitCanvasRef.current = document.createElement("canvas");
+
+    landscapeCanvasRef.current.width = width;
+    landscapeCanvasRef.current.height = height;
+
+    const pH = height;
+    const pW = Math.round(pH * (9 / 16));
+    portraitCanvasRef.current.width = pW;
+    portraitCanvasRef.current.height = pH;
+  }
+
+  function startDrawLoop(sourceVideo: HTMLVideoElement) {
+    const lCanvas = landscapeCanvasRef.current!;
+    const pCanvas = portraitCanvasRef.current!;
+    const lCtx = lCanvas.getContext("2d");
+    const pCtx = pCanvas.getContext("2d");
+    if (!lCtx || !pCtx) return;
+
+    const draw = () => {
+      lCtx.clearRect(0, 0, lCanvas.width, lCanvas.height);
+      pCtx.clearRect(0, 0, pCanvas.width, pCanvas.height);
+
+      drawAspectCropZoomed(
+        lCtx,
+        sourceVideo,
+        lCanvas.width,
+        lCanvas.height,
+        clamp(landscapeZoomSmoothedRef.current, ZOOM_MIN, ZOOM_MAX),
+      );
+
+      drawAspectCropZoomed(
+        pCtx,
+        sourceVideo,
+        pCanvas.width,
+        pCanvas.height,
+        clamp(portraitZoomSmoothedRef.current, ZOOM_MIN, ZOOM_MAX),
+      );
+
+      drawLoopRef.current = requestAnimationFrame(draw);
+    };
+
+    if (drawLoopRef.current) cancelAnimationFrame(drawLoopRef.current);
+    drawLoopRef.current = requestAnimationFrame(draw);
+  }
+
+  function stopDrawLoop() {
+    if (drawLoopRef.current) {
+      cancelAnimationFrame(drawLoopRef.current);
+      drawLoopRef.current = null;
+    }
+  }
+
   const handleCapture = async () => {
+    if (!stream || hasCameraError) return;
+
     if (mode === "video") {
       if (isRecording) {
         setIsRecording(false);
-        if (recorder) {
-          recorder.stop();
-        }
+        recLandscapeRef.current?.stop();
+        recPortraitRef.current?.stop();
+        stopDrawLoop();
       } else {
         setIsRecording(true);
-        const newChunks: Blob[] = [];
-        setChunks(newChunks);
-        const newRecorder = new MediaRecorder(stream!, { mimeType: 'video/webm;codecs=vp8,opus' });
-        newRecorder.ondataavailable = (e) => {
-          if (e.data.size > 0) {
-            newChunks.push(e.data);
-          }
+
+        const lv = landscapeVideoRef.current;
+        if (!lv) return;
+
+        await waitForVideoReady(lv);
+
+        const width = lv.videoWidth || 1920;
+        const height = lv.videoHeight || 1080;
+
+        ensureCanvases(width, height);
+        startDrawLoop(lv);
+
+        const lStream = landscapeCanvasRef.current!.captureStream(30);
+        const pStream = portraitCanvasRef.current!.captureStream(30);
+
+        const audioTrack = stream.getAudioTracks()[0];
+        if (audioTrack && !isMuted) {
+          lStream.addTrack(audioTrack.clone());
+          pStream.addTrack(audioTrack.clone());
+        }
+
+        const mimeType = pickBestMimeType();
+        chunksLandscapeRef.current = [];
+        chunksPortraitRef.current = [];
+
+        const recL = new MediaRecorder(lStream, mimeType ? { mimeType } : undefined);
+        const recP = new MediaRecorder(pStream, mimeType ? { mimeType } : undefined);
+
+        recL.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) chunksLandscapeRef.current.push(e.data);
         };
-        newRecorder.onstop = async () => {
-          const fullBlob = new Blob(newChunks, { type: 'video/webm' });
-          await processCapture(fullBlob);
+        recP.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) chunksPortraitRef.current.push(e.data);
         };
-        setRecorder(newRecorder);
-        newRecorder.start();
+
+        const stopped = { l: false, p: false };
+        const onBothStopped = async () => {
+          if (!stopped.l || !stopped.p) return;
+
+          const lBlob = new Blob(chunksLandscapeRef.current, { type: "video/webm" });
+          const pBlob = new Blob(chunksPortraitRef.current, { type: "video/webm" });
+
+          chunksLandscapeRef.current = [];
+          chunksPortraitRef.current = [];
+
+          await processCapture(lBlob, pBlob);
+        };
+
+        recL.onstop = () => {
+          stopped.l = true;
+          void onBothStopped();
+        };
+        recP.onstop = () => {
+          stopped.p = true;
+          void onBothStopped();
+        };
+
+        recLandscapeRef.current = recL;
+        recPortraitRef.current = recP;
+
+        recL.start(250);
+        recP.start(250);
       }
     } else {
-      // Photo mode - instant capture
-      await processCapture();
+      const lv = landscapeVideoRef.current;
+      if (!lv) return;
+
+      await waitForVideoReady(lv);
+
+      const width = lv.videoWidth || 1920;
+      const height = lv.videoHeight || 1080;
+
+      ensureCanvases(width, height);
+
+      const lCanvas = landscapeCanvasRef.current!;
+      const pCanvas = portraitCanvasRef.current!;
+      const lCtx = lCanvas.getContext("2d");
+      const pCtx = pCanvas.getContext("2d");
+      if (!lCtx || !pCtx) return;
+
+      lCtx.clearRect(0, 0, lCanvas.width, lCanvas.height);
+      pCtx.clearRect(0, 0, pCanvas.width, pCanvas.height);
+
+      drawAspectCropZoomed(
+        lCtx,
+        lv,
+        lCanvas.width,
+        lCanvas.height,
+        clamp(landscapeZoomSmoothedRef.current, ZOOM_MIN, ZOOM_MAX),
+      );
+      drawAspectCropZoomed(
+        pCtx,
+        lv,
+        pCanvas.width,
+        pCanvas.height,
+        clamp(portraitZoomSmoothedRef.current, ZOOM_MIN, ZOOM_MAX),
+      );
+
+      const lBlob = await new Promise<Blob>((resolve) => lCanvas.toBlob((b) => resolve(b!), "image/png"));
+      const pBlob = await new Promise<Blob>((resolve) => pCanvas.toBlob((b) => resolve(b!), "image/png"));
+
+      await processCapture(lBlob, pBlob);
     }
   };
 
-  const processCapture = async (videoBlob?: Blob) => {
+  const processCapture = async (landscapeBlob?: Blob, portraitBlob?: Blob) => {
     setProcessing(true);
-    
+
     try {
       const now = new Date();
-      const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
-      const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '');
+      const dateStr = now.toISOString().split("T")[0].replace(/-/g, "");
+      const timeStr = now.toTimeString().split(" ")[0].replace(/:/g, "");
       const formattedTS = `${dateStr}_${timeStr}`;
 
-      let landscapeBlob: Blob;
-      let portraitBlob: Blob;
-
-      if (mode === "video" && videoBlob) {
-        landscapeBlob = videoBlob;
-        portraitBlob = videoBlob; // In a browser-only prototype, we use the same master for both downloads
-      } else {
-        // Real photo capture logic
-        const video = landscapeVideoRef.current!;
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth || 1920;
-        canvas.height = video.videoHeight || 1080;
-        canvas.getContext('2d')?.drawImage(video, 0, 0);
-        landscapeBlob = await new Promise(r => canvas.toBlob(r!, 'image/png'));
-        
-        // Portrait crop
-        const pCanvas = document.createElement('canvas');
-        const pHeight = canvas.height;
-        const pWidth = pHeight * (9/16);
-        pCanvas.width = pWidth;
-        pCanvas.height = pHeight;
-        const xOffset = (canvas.width - pWidth) / 2;
-        pCanvas.getContext('2d')?.drawImage(video, xOffset, 0, pWidth, pHeight, 0, 0, pWidth, pHeight);
-        portraitBlob = await new Promise(r => pCanvas.toBlob(r!, 'image/png'));
-      }
-
-      // Download files
-      const download = (blob: Blob, suffix: string, ext: string) => {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `FlipCastDuo_${suffix}_${formattedTS}.${ext}`;
-        a.click();
-        setTimeout(() => URL.revokeObjectURL(url), 100);
-      };
+      if (!landscapeBlob || !portraitBlob) throw new Error("Missing output blobs");
 
       const ext = mode === "video" ? "webm" : "png";
-      download(landscapeBlob, "Landscape", ext);
-      download(portraitBlob, "Portrait", ext);
+
+      const download = (blob: Blob, suffix: string) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `FlipCastDuo_${suffix}_${formattedTS}.${ext}`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+      };
+
+      download(landscapeBlob, "Landscape");
+      download(portraitBlob, "Portrait");
 
       toast({
         title: "Saved to Downloads",
         description: `Both ${mode} formats have been saved to your computer.`,
       });
 
-      // Update Gallery / Cloud
       const landscapeUrl = URL.createObjectURL(landscapeBlob);
       const portraitUrl = URL.createObjectURL(portraitBlob);
-      
+
       const payload = {
         title: `${mode.charAt(0).toUpperCase() + mode.slice(1)} Capture - ${now.toLocaleTimeString()}`,
         type: mode,
@@ -166,7 +621,7 @@ export default function CapturePage() {
       } else {
         queryClient.setQueryData([api.captures.list.path], (old: any) => [
           { ...payload, id: Math.random(), createdAt: new Date() },
-          ...(old || [])
+          ...(old || []),
         ]);
       }
     } catch (error) {
@@ -174,7 +629,7 @@ export default function CapturePage() {
       toast({
         title: "Capture Failed",
         description: "An error occurred while saving your media.",
-        variant: "destructive"
+        variant: "destructive",
       });
     } finally {
       setProcessing(false);
@@ -183,13 +638,18 @@ export default function CapturePage() {
 
   return (
     <div className="min-h-[100dvh] bg-zinc-950 flex flex-col relative overflow-hidden">
-      
+      {/* Subtle premium backdrop */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[900px] h-[900px] rounded-full bg-white/5 blur-3xl" />
+        <div className="absolute -bottom-48 right-[-200px] w-[700px] h-[700px] rounded-full bg-white/4 blur-3xl" />
+      </div>
+
       {/* Top Bar */}
       <header className="absolute top-0 inset-x-0 p-6 z-20 flex justify-between items-center">
-        <div className="text-white font-display font-bold text-xl tracking-tight flex items-center gap-2">
-          FlipCast<span className="text-white/50">Duo</span>
+        <div className="text-white font-display font-semibold text-[17px] tracking-tight flex items-center gap-2">
+          FlipCast<span className="text-white/45">Duo</span>
         </div>
-        
+
         <div className="flex gap-2">
           {hasMicError && (
             <div className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium bg-red-500/20 border border-red-500/30 text-red-400 backdrop-blur-md">
@@ -197,12 +657,12 @@ export default function CapturePage() {
               Mic Denied
             </div>
           )}
-          <button 
+          <button
             onClick={() => setCloudSync(!cloudSync)}
             className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all backdrop-blur-md border ${
-              cloudSync 
-                ? "bg-white/20 border-white/30 text-white" 
-                : "bg-black/40 border-white/10 text-white/50"
+              cloudSync
+                ? "bg-white/12 border-white/18 text-white"
+                : "bg-black/30 border-white/10 text-white/55"
             }`}
           >
             {cloudSync ? <Cloud className="w-4 h-4" /> : <CloudOff className="w-4 h-4" />}
@@ -211,9 +671,8 @@ export default function CapturePage() {
         </div>
       </header>
 
-      {/* Main Viewfinder Area */}
+      {/* Main Viewfinder */}
       <main className="flex-1 flex flex-col lg:flex-row items-center justify-center p-4 sm:p-8 pt-24 pb-32 gap-6 lg:gap-8 max-w-7xl mx-auto w-full">
-        
         {hasCameraError ? (
           <div className="flex-1 w-full h-full min-h-[400px] flex flex-col items-center justify-center bg-zinc-900 rounded-3xl border border-zinc-800 text-zinc-500 p-8 text-center">
             <Camera className="w-16 h-16 mb-4 opacity-50" />
@@ -222,60 +681,93 @@ export default function CapturePage() {
           </div>
         ) : (
           <>
-            {/* Landscape Viewfinder */}
-            <div className="relative w-full lg:w-3/5 aspect-video bg-black rounded-[2rem] overflow-hidden shadow-2xl ring-1 ring-white/10 group">
-              <video 
-                ref={landscapeVideoRef} 
-                autoPlay 
-                playsInline 
-                muted 
-                className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105"
+            {/* Landscape */}
+            <div
+              ref={landscapeBoxRef}
+              onTouchStart={handleTouchStart("l")}
+              onTouchMove={handleTouchMove("l")}
+              onTouchEnd={handleTouchEnd("l")}
+              className="relative w-full lg:w-3/5 aspect-video bg-black rounded-[2rem] overflow-hidden shadow-2xl ring-1 ring-white/10"
+              style={{ touchAction: "none" }} // needed for pinch in browser
+            >
+              <video
+                ref={landscapeVideoRef}
+                autoPlay
+                playsInline
+                muted
+                style={{ transform: `scale(${landscapeZoomDisplay})`, transformOrigin: "center center" }}
+                className="w-full h-full object-cover"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none" />
-              <div className="absolute bottom-4 left-6 px-3 py-1.5 bg-black/50 backdrop-blur-md rounded-lg text-white text-xs font-medium border border-white/10 uppercase tracking-wider">
+              <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-transparent pointer-events-none" />
+              <div className="absolute bottom-4 left-6 px-3 py-1.5 bg-black/35 backdrop-blur-md rounded-lg text-white text-xs font-medium border border-white/10 uppercase tracking-wider pointer-events-none">
                 16:9 Landscape
               </div>
-              {isRecording && <div className="absolute top-6 right-6 w-3 h-3 bg-red-500 rounded-full recording-pulse" />}
+
+              {isRecording && (
+                <div className="absolute top-6 right-6 flex items-center gap-2 pointer-events-none">
+                  <div className="w-2.5 h-2.5 bg-red-500 rounded-full recording-pulse" />
+                  <div className="text-white/70 text-[11px] tracking-wide uppercase">REC</div>
+                </div>
+              )}
+
+              <ZoomMiniHUD
+                zoom={landscapeZoomTarget}
+                onSetZoom={(v) => setLandscapeZoomTarget(clamp(v, 1, 3))}
+                anchorClass="bottom-4 right-4"
+                ariaLabel="Landscape zoom"
+              />
             </div>
 
-            {/* Portrait Viewfinder */}
-            <div className="relative w-[50%] sm:w-[40%] lg:w-[25%] aspect-[9/16] bg-black rounded-[2rem] overflow-hidden shadow-2xl ring-1 ring-white/10 group mx-auto lg:mx-0">
-              <video 
-                ref={portraitVideoRef} 
-                autoPlay 
-                playsInline 
-                muted 
-                className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105"
+            {/* Portrait */}
+            <div
+              ref={portraitBoxRef}
+              onTouchStart={handleTouchStart("p")}
+              onTouchMove={handleTouchMove("p")}
+              onTouchEnd={handleTouchEnd("p")}
+              className="relative w-[50%] sm:w-[40%] lg:w-[25%] aspect-[9/16] bg-black rounded-[2rem] overflow-hidden shadow-2xl ring-1 ring-white/10 mx-auto lg:mx-0"
+              style={{ touchAction: "none" }}
+            >
+              <video
+                ref={portraitVideoRef}
+                autoPlay
+                playsInline
+                muted
+                style={{ transform: `scale(${portraitZoomDisplay})`, transformOrigin: "center center" }}
+                className="w-full h-full object-cover"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none" />
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-black/50 backdrop-blur-md rounded-lg text-white text-xs font-medium border border-white/10 uppercase tracking-wider whitespace-nowrap">
+              <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-transparent pointer-events-none" />
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-black/35 backdrop-blur-md rounded-lg text-white text-xs font-medium border border-white/10 uppercase tracking-wider whitespace-nowrap pointer-events-none">
                 9:16 Portrait
               </div>
+
+              <ZoomMiniHUD
+                zoom={portraitZoomTarget}
+                onSetZoom={(v) => setPortraitZoomTarget(clamp(v, 1, 3))}
+                anchorClass="top-4 right-4"
+                ariaLabel="Portrait zoom"
+              />
             </div>
           </>
         )}
       </main>
 
-      {/* Camera Controls */}
+      {/* Controls */}
       <div className="absolute bottom-24 inset-x-0 flex flex-col items-center gap-6 z-20">
-        
         <div className="flex items-center gap-4">
-          {/* Mute Toggle */}
           {mode === "video" && !hasMicError && (
             <button
               onClick={() => setIsMuted(!isMuted)}
               className={`p-3 rounded-full backdrop-blur-xl border transition-all ${
-                isMuted 
-                  ? "bg-red-500/20 border-red-500/30 text-red-500" 
-                  : "bg-black/50 border-white/10 text-white hover:bg-black/70"
+                isMuted
+                  ? "bg-red-500/18 border-red-500/25 text-red-500"
+                  : "bg-black/35 border-white/10 text-white hover:bg-black/55"
               }`}
             >
               {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
             </button>
           )}
 
-          {/* Mode Selector */}
-          <div className="flex bg-black/50 backdrop-blur-xl p-1 rounded-full border border-white/10 shadow-xl">
+          <div className="flex bg-black/35 backdrop-blur-xl p-1 rounded-full border border-white/10 shadow-xl">
             {(["video", "photo"] as Mode[]).map((m) => (
               <button
                 key={m}
@@ -300,26 +792,24 @@ export default function CapturePage() {
             ))}
           </div>
 
-          {/* Placeholder for symmetry */}
           {mode === "video" && !hasMicError && <div className="w-11" />}
         </div>
 
-        {/* Shutter Button */}
         <button
           onClick={handleCapture}
           disabled={processing || hasCameraError}
           className="relative w-20 h-20 rounded-full flex items-center justify-center outline-none group disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {/* Outer ring */}
           <div className={`absolute inset-0 rounded-full border-4 transition-colors duration-300 ${
             isRecording ? "border-red-500/50" : "border-white"
           }`} />
-          
-          {/* Inner button */}
-          <motion.div 
+
+          <motion.div
             className={`w-16 h-16 rounded-full flex items-center justify-center transition-colors ${
-              mode === "video" 
-                ? isRecording ? "bg-red-500 scale-75 rounded-xl" : "bg-red-500" 
+              mode === "video"
+                ? isRecording
+                  ? "bg-red-500 scale-75 rounded-xl"
+                  : "bg-red-500"
                 : "bg-white"
             }`}
             layout
@@ -330,10 +820,10 @@ export default function CapturePage() {
         </button>
       </div>
 
-      {/* Processing Overlay */}
+      {/* Processing overlay */}
       <AnimatePresence>
         {processing && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
