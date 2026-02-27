@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Cloud, CloudOff, Video, Camera, Loader2, Mic, MicOff } from "lucide-react";
 import { useCreateCapture } from "@/hooks/use-captures";
@@ -37,13 +37,13 @@ async function waitForVideoReady(video: HTMLVideoElement) {
     video.addEventListener("loadeddata", onReady);
 
     const start = Date.now();
-    const t = window.setInterval(() => {
+    const t = setInterval(() => {
       if (video.videoWidth > 0 && video.videoHeight > 0) {
-        window.clearInterval(t);
+        clearInterval(t);
         cleanup();
         resolve();
       } else if (Date.now() - start > 3000) {
-        window.clearInterval(t);
+        clearInterval(t);
         cleanup();
         resolve();
       }
@@ -95,7 +95,7 @@ function drawAspectCropZoomed(
 }
 
 /**
- * Premium mini zoom UI:
+ * Mini zoom UI:
  * - Tiny “1.0×” chip always visible
  * - Slider only appears while interacting and auto-hides
  */
@@ -169,8 +169,12 @@ function ZoomMiniHUD({
                   className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white shadow-[0_10px_22px_rgba(0,0,0,0.55)]"
                   style={{ left: `calc(${pct}% - 8px)` }}
                 />
-                <div className="absolute inset-y-0 left-3 flex items-center text-[11px] text-white/45">1×</div>
-                <div className="absolute inset-y-0 right-3 flex items-center text-[11px] text-white/45">3×</div>
+                <div className="absolute inset-y-0 left-3 flex items-center text-[11px] text-white/45">
+                  1×
+                </div>
+                <div className="absolute inset-y-0 right-3 flex items-center text-[11px] text-white/45">
+                  3×
+                </div>
               </div>
             </div>
           </motion.div>
@@ -190,7 +194,7 @@ export default function CapturePage() {
   const [isMuted, setIsMuted] = useState(false);
   const [processing, setProcessing] = useState(false);
 
-  // Targets (user intent) + smoothed (display + recording)
+  // Targets + smoothed (display + recording)
   const [landscapeZoomTarget, setLandscapeZoomTarget] = useState(1);
   const [portraitZoomTarget, setPortraitZoomTarget] = useState(1);
   const [landscapeZoomDisplay, setLandscapeZoomDisplay] = useState(1);
@@ -268,6 +272,7 @@ export default function CapturePage() {
         console.error("Access denied or unavailable:", err);
         if (!mounted) return;
 
+        // fall back to video-only
         try {
           const videoOnly = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
@@ -319,7 +324,7 @@ export default function CapturePage() {
       if (lv) lv.srcObject = null;
       if (pv) pv.srcObject = null;
     };
-  }, [stream]);
+  }, [stream, isMuted]);
 
   // Toggle mute
   useEffect(() => {
@@ -335,14 +340,12 @@ export default function CapturePage() {
 
     const onWheelLandscape = (e: WheelEvent) => {
       e.preventDefault();
-      const delta = e.deltaY;
-      const step = delta > 0 ? -0.08 : 0.08;
+      const step = e.deltaY > 0 ? -0.08 : 0.08;
       setLandscapeZoomTarget((z) => clamp(Number((z + step).toFixed(2)), ZOOM_MIN, ZOOM_MAX));
     };
     const onWheelPortrait = (e: WheelEvent) => {
       e.preventDefault();
-      const delta = e.deltaY;
-      const step = delta > 0 ? -0.08 : 0.08;
+      const step = e.deltaY > 0 ? -0.08 : 0.08;
       setPortraitZoomTarget((z) => clamp(Number((z + step).toFixed(2)), ZOOM_MIN, ZOOM_MAX));
     };
 
@@ -472,7 +475,7 @@ export default function CapturePage() {
 
       toast({
         title: "Saved to Downloads",
-        description: `Both ${mode} formats have been saved to your computer.`,
+        description: `Both ${mode} formats have been saved to your device.`,
       });
 
       const landscapeUrl = URL.createObjectURL(landscapeBlob);
@@ -630,12 +633,12 @@ export default function CapturePage() {
       </div>
 
       {/* Top Bar */}
-      <header className="absolute top-0 inset-x-0 p-4 sm:p-6 z-20 flex justify-between items-center">
-        <div className="text-white font-semibold text-[17px] tracking-tight flex items-center gap-2">
+      <header className="absolute top-0 inset-x-0 p-6 z-20 flex justify-between items-center">
+        <div className="text-white font-display font-semibold text-[17px] tracking-tight flex items-center gap-2">
           FlipCast<span className="text-white/45">Duo</span>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
           {hasMicError && (
             <div className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium bg-red-500/20 border border-red-500/30 text-red-400 backdrop-blur-md">
               <MicOff className="w-3 h-3" />
@@ -646,7 +649,9 @@ export default function CapturePage() {
           <button
             onClick={() => setCloudSync(!cloudSync)}
             className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all backdrop-blur-md border ${
-              cloudSync ? "bg-white/12 border-white/18 text-white" : "bg-black/30 border-white/10 text-white/55"
+              cloudSync
+                ? "bg-white/12 border-white/18 text-white"
+                : "bg-black/30 border-white/10 text-white/55"
             }`}
           >
             {cloudSync ? <Cloud className="w-4 h-4" /> : <CloudOff className="w-4 h-4" />}
@@ -655,10 +660,10 @@ export default function CapturePage() {
         </div>
       </header>
 
-      {/* Main Viewfinder — forced side-by-side (no stacking) */}
-      <main className="relative z-10 flex flex-row flex-nowrap items-start justify-center gap-4 sm:gap-6 pt-20 sm:pt-24 pb-36 px-3 sm:px-6 max-w-7xl mx-auto w-full">
+      {/* MAIN LAYOUT (matches your Screenshot 2) */}
+      <main className="relative z-10 max-w-7xl mx-auto pt-24 pb-10 px-4 sm:px-8">
         {hasCameraError ? (
-          <div className="w-full min-h-[420px] flex flex-col items-center justify-center bg-zinc-900 rounded-3xl border border-zinc-800 text-zinc-500 p-8 text-center">
+          <div className="w-full min-h-[520px] flex flex-col items-center justify-center bg-zinc-900 rounded-3xl border border-zinc-800 text-zinc-500 p-8 text-center">
             <Camera className="w-16 h-16 mb-4 opacity-50" />
             <h3 className="text-xl font-medium text-white mb-2">Camera Unavailable</h3>
             <p className="max-w-md">
@@ -666,14 +671,23 @@ export default function CapturePage() {
             </p>
           </div>
         ) : (
-          <>
-            {/* Landscape (left) */}
+          <div
+            className="
+              grid
+              gap-6
+              items-start
+              [grid-template-columns:1fr_140px_minmax(260px,360px)]
+              max-lg:[grid-template-columns:1fr_120px_minmax(220px,320px)]
+            "
+          >
+            {/* ROW 1: Views */}
+            {/* Landscape */}
             <div
               ref={landscapeBoxRef}
               onTouchStart={handleTouchStart("l")}
               onTouchMove={handleTouchMove("l")}
               onTouchEnd={handleTouchEnd("l")}
-              className="relative flex-[7] aspect-video bg-black rounded-[2rem] overflow-hidden shadow-2xl ring-1 ring-white/10"
+              className="relative w-full aspect-video bg-black rounded-[2rem] overflow-hidden shadow-2xl ring-1 ring-white/10"
               style={{ touchAction: "none" }}
             >
               <video
@@ -685,6 +699,7 @@ export default function CapturePage() {
                 className="w-full h-full object-cover"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-transparent pointer-events-none" />
+
               <div className="absolute bottom-4 left-6 px-3 py-1.5 bg-black/35 backdrop-blur-md rounded-lg text-white text-xs font-medium border border-white/10 uppercase tracking-wider pointer-events-none">
                 16:9 Landscape
               </div>
@@ -704,13 +719,16 @@ export default function CapturePage() {
               />
             </div>
 
-            {/* Portrait (right) */}
+            {/* Spacer column (for the record button area) */}
+            <div />
+
+            {/* Portrait */}
             <div
               ref={portraitBoxRef}
               onTouchStart={handleTouchStart("p")}
               onTouchMove={handleTouchMove("p")}
               onTouchEnd={handleTouchEnd("p")}
-              className="relative flex-[3] aspect-[9/16] bg-black rounded-[2rem] overflow-hidden shadow-2xl ring-1 ring-white/10"
+              className="relative w-full aspect-[9/16] bg-black rounded-[2rem] overflow-hidden shadow-2xl ring-1 ring-white/10"
               style={{ touchAction: "none" }}
             >
               <video
@@ -722,6 +740,7 @@ export default function CapturePage() {
                 className="w-full h-full object-cover"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-transparent pointer-events-none" />
+
               <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-black/35 backdrop-blur-md rounded-lg text-white text-xs font-medium border border-white/10 uppercase tracking-wider whitespace-nowrap pointer-events-none">
                 9:16 Portrait
               </div>
@@ -733,78 +752,107 @@ export default function CapturePage() {
                 ariaLabel="Portrait zoom"
               />
             </div>
-          </>
+
+            {/* ROW 2: Controls dock (col 1-2) + record (col 2) */}
+            <div className="col-span-2 mt-2">
+              {/* Dock background */}
+              <div className="relative w-full rounded-[2rem] bg-black/35 border border-white/10 backdrop-blur-xl shadow-[0_24px_70px_rgba(0,0,0,0.6)] px-6 py-5">
+                <div className="grid items-center gap-6 [grid-template-columns:240px_1fr] max-md:[grid-template-columns:180px_1fr]">
+                  {/* LEFT: reserved logo space (empty for now) */}
+                  <div className="h-[86px] rounded-2xl border border-white/10 bg-white/5" />
+
+                  {/* CENTER: mode + nav stacked neatly */}
+                  <div className="flex flex-col items-center justify-center gap-4">
+                    <div className="flex items-center gap-4">
+                      {mode === "video" && !hasMicError && (
+                        <button
+                          onClick={() => setIsMuted(!isMuted)}
+                          className={`p-3 rounded-full backdrop-blur-xl border transition-all ${
+                            isMuted
+                              ? "bg-red-500/18 border-red-500/25 text-red-500"
+                              : "bg-black/35 border-white/10 text-white hover:bg-black/55"
+                          }`}
+                        >
+                          {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                        </button>
+                      )}
+
+                      <div className="flex bg-black/35 backdrop-blur-xl p-1 rounded-full border border-white/10 shadow-xl">
+                        {(["video", "photo"] as Mode[]).map((m) => (
+                          <button
+                            key={m}
+                            onClick={() => !isRecording && setMode(m)}
+                            disabled={isRecording}
+                            className={`relative px-6 py-2 rounded-full text-sm font-medium uppercase tracking-wider transition-colors ${
+                              mode === m ? "text-black" : "text-white/70 hover:text-white"
+                            } ${isRecording ? "opacity-50 cursor-not-allowed" : ""}`}
+                          >
+                            {mode === m && (
+                              <motion.div
+                                layoutId="active-mode"
+                                className="absolute inset-0 bg-white rounded-full z-0"
+                                transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                              />
+                            )}
+                            <span className="relative z-10 flex items-center gap-2">
+                              {m === "video" ? <Video className="w-4 h-4" /> : <Camera className="w-4 h-4" />}
+                              {m}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex bg-white/10 border border-white/10 rounded-full p-2 gap-2">
+                      <button className="px-5 py-2 rounded-full bg-white/15 text-white text-sm font-medium">
+                        Capture
+                      </button>
+                      <button className="px-5 py-2 rounded-full text-white/55 text-sm font-medium">
+                        Gallery
+                      </button>
+                      <button className="px-5 py-2 rounded-full text-white/55 text-sm font-medium">
+                        Accessory
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Record button in its own column, neatly between dock and portrait */}
+            <div className="mt-2 flex items-center justify-center">
+              <button
+                onClick={handleCapture}
+                disabled={processing || hasCameraError}
+                className="relative w-24 h-24 rounded-full flex items-center justify-center outline-none group disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label={mode === "video" ? (isRecording ? "Stop recording" : "Start recording") : "Take photo"}
+              >
+                <div
+                  className={`absolute inset-0 rounded-full border-4 transition-colors duration-300 ${
+                    isRecording ? "border-red-500/50" : "border-white"
+                  }`}
+                />
+
+                <motion.div
+                  className={`w-[78px] h-[78px] rounded-full flex items-center justify-center transition-colors ${
+                    mode === "video"
+                      ? isRecording
+                        ? "bg-red-500 scale-75 rounded-xl"
+                        : "bg-red-500"
+                      : "bg-white"
+                  }`}
+                  layout
+                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                >
+                  {processing && (
+                    <Loader2 className={`w-9 h-9 animate-spin ${mode === "photo" ? "text-black" : "text-white"}`} />
+                  )}
+                </motion.div>
+              </button>
+            </div>
+          </div>
         )}
       </main>
-
-      {/* Controls */}
-      <div className="absolute bottom-16 sm:bottom-20 inset-x-0 flex flex-col items-center gap-5 z-20">
-        <div className="flex items-center gap-4">
-          {mode === "video" && !hasMicError && (
-            <button
-              onClick={() => setIsMuted(!isMuted)}
-              className={`p-3 rounded-full backdrop-blur-xl border transition-all ${
-                isMuted ? "bg-red-500/18 border-red-500/25 text-red-500" : "bg-black/35 border-white/10 text-white hover:bg-black/55"
-              }`}
-              title="Mute / Unmute"
-            >
-              {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-            </button>
-          )}
-
-          <div className="flex bg-black/35 backdrop-blur-xl p-1 rounded-full border border-white/10 shadow-xl">
-            {(["video", "photo"] as Mode[]).map((m) => (
-              <button
-                key={m}
-                onClick={() => !isRecording && setMode(m)}
-                disabled={isRecording}
-                className={`relative px-6 py-2 rounded-full text-sm font-medium uppercase tracking-wider transition-colors ${
-                  mode === m ? "text-black" : "text-white/70 hover:text-white"
-                } ${isRecording ? "opacity-50 cursor-not-allowed" : ""}`}
-              >
-                {mode === m && (
-                  <motion.div
-                    layoutId="active-mode"
-                    className="absolute inset-0 bg-white rounded-full z-0"
-                    transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                  />
-                )}
-                <span className="relative z-10 flex items-center gap-2">
-                  {m === "video" ? <Video className="w-4 h-4" /> : <Camera className="w-4 h-4" />}
-                  {m}
-                </span>
-              </button>
-            ))}
-          </div>
-
-          {mode === "video" && !hasMicError && <div className="w-11" />}
-        </div>
-
-        <button
-          onClick={handleCapture}
-          disabled={processing || hasCameraError}
-          className="relative w-20 h-20 rounded-full flex items-center justify-center outline-none group disabled:opacity-50 disabled:cursor-not-allowed"
-          title={mode === "video" ? (isRecording ? "Stop" : "Record") : "Capture photo"}
-        >
-          <div
-            className={`absolute inset-0 rounded-full border-4 transition-colors duration-300 ${
-              isRecording ? "border-red-500/50" : "border-white"
-            }`}
-          />
-
-          <motion.div
-            className={`w-16 h-16 rounded-full flex items-center justify-center transition-colors ${
-              mode === "video" ? (isRecording ? "bg-red-500 scale-75 rounded-xl" : "bg-red-500") : "bg-white"
-            }`}
-            layout
-            transition={{ type: "spring", stiffness: 400, damping: 25 }}
-          >
-            {processing && (
-              <Loader2 className={`w-8 h-8 animate-spin ${mode === "photo" ? "text-black" : "text-white"}`} />
-            )}
-          </motion.div>
-        </button>
-      </div>
 
       {/* Processing overlay */}
       <AnimatePresence>
