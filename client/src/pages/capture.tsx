@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Cloud, CloudOff, Video, Camera, Loader2, Mic, MicOff } from "lucide-react";
 import { useCreateCapture } from "@/hooks/use-captures";
@@ -9,11 +10,7 @@ import { api } from "@shared/routes";
 type Mode = "video" | "photo";
 
 function pickBestMimeType() {
-  const candidates = [
-    "video/webm;codecs=vp9,opus",
-    "video/webm;codecs=vp8,opus",
-    "video/webm",
-  ];
+  const candidates = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"];
   for (const c of candidates) {
     if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported?.(c)) return c;
   }
@@ -133,7 +130,6 @@ function ZoomMiniHUD({
 
   return (
     <div className={`absolute ${anchorClass} z-30 pointer-events-auto select-none`}>
-      {/* Tiny chip */}
       <button
         type="button"
         onClick={() => {
@@ -145,7 +141,6 @@ function ZoomMiniHUD({
         {zoom.toFixed(1)}×
       </button>
 
-      {/* Minimal slider appears only when active */}
       <AnimatePresence>
         {open && (
           <motion.div
@@ -177,12 +172,8 @@ function ZoomMiniHUD({
                   className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white shadow-[0_10px_22px_rgba(0,0,0,0.55)]"
                   style={{ left: `calc(${pct}% - 8px)` }}
                 />
-                <div className="absolute inset-y-0 left-3 flex items-center text-[11px] text-white/45">
-                  1×
-                </div>
-                <div className="absolute inset-y-0 right-3 flex items-center text-[11px] text-white/45">
-                  3×
-                </div>
+                <div className="absolute inset-y-0 left-3 flex items-center text-[11px] text-white/45">1×</div>
+                <div className="absolute inset-y-0 right-3 flex items-center text-[11px] text-white/45">3×</div>
               </div>
             </div>
           </motion.div>
@@ -202,7 +193,6 @@ export default function CapturePage() {
   const [isMuted, setIsMuted] = useState(false);
   const [processing, setProcessing] = useState(false);
 
-  // Targets (user intent) + smoothed (display + recording)
   const [landscapeZoomTarget, setLandscapeZoomTarget] = useState(1);
   const [portraitZoomTarget, setPortraitZoomTarget] = useState(1);
   const [landscapeZoomDisplay, setLandscapeZoomDisplay] = useState(1);
@@ -213,22 +203,17 @@ export default function CapturePage() {
 
   const ZOOM_MIN = 1;
   const ZOOM_MAX = 3;
-
-  // Slightly more responsive smoothing than before
   const SMOOTHING = 0.42;
 
   const landscapeVideoRef = useRef<HTMLVideoElement>(null);
   const portraitVideoRef = useRef<HTMLVideoElement>(null);
 
-  // View containers (for wheel/pinch)
   const landscapeBoxRef = useRef<HTMLDivElement>(null);
   const portraitBoxRef = useRef<HTMLDivElement>(null);
 
-  // Pinch state
   const pinchL = useRef<{ startDist: number; startZoom: number } | null>(null);
   const pinchP = useRef<{ startDist: number; startZoom: number } | null>(null);
 
-  // Offscreen canvases for recording
   const landscapeCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const portraitCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawLoopRef = useRef<number | null>(null);
@@ -241,7 +226,6 @@ export default function CapturePage() {
   const { mutateAsync: createCapture } = useCreateCapture();
   const { toast } = useToast();
 
-  // Smooth animation loop
   useEffect(() => {
     let raf = 0;
     const tick = () => {
@@ -264,7 +248,6 @@ export default function CapturePage() {
     return () => cancelAnimationFrame(raf);
   }, [landscapeZoomTarget, portraitZoomTarget]);
 
-  // Camera init
   useEffect(() => {
     let mounted = true;
 
@@ -308,7 +291,6 @@ export default function CapturePage() {
     };
   }, []);
 
-  // Attach stream to BOTH preview videos
   useEffect(() => {
     const lv = landscapeVideoRef.current;
     const pv = portraitVideoRef.current;
@@ -335,20 +317,17 @@ export default function CapturePage() {
     };
   }, [stream]);
 
-  // Toggle mute
   useEffect(() => {
     if (!stream) return;
     stream.getAudioTracks().forEach((t) => (t.enabled = !isMuted));
   }, [isMuted, stream]);
 
-  // Wheel zoom (desktop testing)
   useEffect(() => {
     const lEl = landscapeBoxRef.current;
     const pEl = portraitBoxRef.current;
     if (!lEl || !pEl) return;
 
     const onWheelLandscape = (e: WheelEvent) => {
-      // Only if cursor is over the view
       e.preventDefault();
       const delta = e.deltaY;
       const step = delta > 0 ? -0.08 : 0.08;
@@ -370,7 +349,6 @@ export default function CapturePage() {
     };
   }, []);
 
-  // Pinch-to-zoom (mobile/tablet)
   const handleTouchStart = (which: "l" | "p") => (e: React.TouchEvent) => {
     if (e.touches.length !== 2) return;
     const dx = e.touches[0].clientX - e.touches[1].clientX;
@@ -660,9 +638,7 @@ export default function CapturePage() {
           <button
             onClick={() => setCloudSync(!cloudSync)}
             className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all backdrop-blur-md border ${
-              cloudSync
-                ? "bg-white/12 border-white/18 text-white"
-                : "bg-black/30 border-white/10 text-white/55"
+              cloudSync ? "bg-white/12 border-white/18 text-white" : "bg-black/30 border-white/10 text-white/55"
             }`}
           >
             {cloudSync ? <Cloud className="w-4 h-4" /> : <CloudOff className="w-4 h-4" />}
@@ -671,13 +647,15 @@ export default function CapturePage() {
         </div>
       </header>
 
-      {/* Main Viewfinder */}
-      <main className="flex-1 flex flex-col lg:flex-row items-center justify-center p-4 sm:p-8 pt-24 pb-32 gap-6 lg:gap-8 max-w-7xl mx-auto w-full">
+      {/* Main Viewfinder (ALWAYS side-by-side) */}
+      <main className="flex-1 w-full max-w-7xl mx-auto grid grid-cols-[1fr_auto] items-center justify-center gap-4 sm:gap-6 pt-24 pb-32 px-4 sm:px-8">
         {hasCameraError ? (
-          <div className="flex-1 w-full h-full min-h-[400px] flex flex-col items-center justify-center bg-zinc-900 rounded-3xl border border-zinc-800 text-zinc-500 p-8 text-center">
+          <div className="col-span-2 w-full h-full min-h-[400px] flex flex-col items-center justify-center bg-zinc-900 rounded-3xl border border-zinc-800 text-zinc-500 p-8 text-center">
             <Camera className="w-16 h-16 mb-4 opacity-50" />
             <h3 className="text-xl font-medium text-white mb-2">Camera Unavailable</h3>
-            <p className="max-w-md">Please grant camera permissions or ensure a camera is connected to use the live preview.</p>
+            <p className="max-w-md">
+              Please grant camera permissions or ensure a camera is connected to use the live preview.
+            </p>
           </div>
         ) : (
           <>
@@ -687,8 +665,8 @@ export default function CapturePage() {
               onTouchStart={handleTouchStart("l")}
               onTouchMove={handleTouchMove("l")}
               onTouchEnd={handleTouchEnd("l")}
-              className="relative w-full lg:w-3/5 aspect-video bg-black rounded-[2rem] overflow-hidden shadow-2xl ring-1 ring-white/10"
-              style={{ touchAction: "none" }} // needed for pinch in browser
+              className="relative w-full aspect-video bg-black rounded-[2rem] overflow-hidden shadow-2xl ring-1 ring-white/10"
+              style={{ touchAction: "none" }}
             >
               <video
                 ref={landscapeVideoRef}
@@ -718,13 +696,13 @@ export default function CapturePage() {
               />
             </div>
 
-            {/* Portrait */}
+            {/* Portrait (fixed side panel sizing) */}
             <div
               ref={portraitBoxRef}
               onTouchStart={handleTouchStart("p")}
               onTouchMove={handleTouchMove("p")}
               onTouchEnd={handleTouchEnd("p")}
-              className="relative w-[50%] sm:w-[40%] lg:w-[25%] aspect-[9/16] bg-black rounded-[2rem] overflow-hidden shadow-2xl ring-1 ring-white/10 mx-auto lg:mx-0"
+              className="relative aspect-[9/16] w-[34vw] max-w-[260px] min-w-[160px] bg-black rounded-[2rem] overflow-hidden shadow-2xl ring-1 ring-white/10"
               style={{ touchAction: "none" }}
             >
               <video
@@ -758,9 +736,7 @@ export default function CapturePage() {
             <button
               onClick={() => setIsMuted(!isMuted)}
               className={`p-3 rounded-full backdrop-blur-xl border transition-all ${
-                isMuted
-                  ? "bg-red-500/18 border-red-500/25 text-red-500"
-                  : "bg-black/35 border-white/10 text-white hover:bg-black/55"
+                isMuted ? "bg-red-500/18 border-red-500/25 text-red-500" : "bg-black/35 border-white/10 text-white hover:bg-black/55"
               }`}
             >
               {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
@@ -800,22 +776,22 @@ export default function CapturePage() {
           disabled={processing || hasCameraError}
           className="relative w-20 h-20 rounded-full flex items-center justify-center outline-none group disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <div className={`absolute inset-0 rounded-full border-4 transition-colors duration-300 ${
-            isRecording ? "border-red-500/50" : "border-white"
-          }`} />
+          <div
+            className={`absolute inset-0 rounded-full border-4 transition-colors duration-300 ${
+              isRecording ? "border-red-500/50" : "border-white"
+            }`}
+          />
 
           <motion.div
             className={`w-16 h-16 rounded-full flex items-center justify-center transition-colors ${
-              mode === "video"
-                ? isRecording
-                  ? "bg-red-500 scale-75 rounded-xl"
-                  : "bg-red-500"
-                : "bg-white"
+              mode === "video" ? (isRecording ? "bg-red-500 scale-75 rounded-xl" : "bg-red-500") : "bg-white"
             }`}
             layout
             transition={{ type: "spring", stiffness: 400, damping: 25 }}
           >
-            {processing && <Loader2 className={`w-8 h-8 animate-spin ${mode === "photo" ? "text-black" : "text-white"}`} />}
+            {processing && (
+              <Loader2 className={`w-8 h-8 animate-spin ${mode === "photo" ? "text-black" : "text-white"}`} />
+            )}
           </motion.div>
         </button>
       </div>
