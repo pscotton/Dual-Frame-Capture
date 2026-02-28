@@ -5,6 +5,7 @@ import { useCreateCapture } from "@/hooks/use-captures";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { api } from "@shared/routes";
+import { useLocation } from "wouter";
 
 type Mode = "video" | "photo";
 
@@ -201,6 +202,10 @@ export default function CapturePage() {
   const [isMuted, setIsMuted] = useState(false);
   const [processing, setProcessing] = useState(false);
 
+  // Router (wouter)
+  const [location, setLocation] = useLocation();
+  const go = (path: string) => setLocation(path);
+
   // Targets + smoothed (display + recording)
   const [landscapeZoomTarget, setLandscapeZoomTarget] = useState(1);
   const [portraitZoomTarget, setPortraitZoomTarget] = useState(1);
@@ -293,7 +298,6 @@ export default function CapturePage() {
         streamRef.current = mediaStream;
 
         setHasCameraError(false);
-        // don’t assume mic state until user tries to record
         setHasMicError(false);
       } catch (err: any) {
         console.error("Camera unavailable:", err);
@@ -343,7 +347,6 @@ export default function CapturePage() {
     const s = streamRef.current;
     if (!s) return null;
 
-    // already have audio?
     const existing = s.getAudioTracks()[0];
     if (existing) {
       existing.enabled = !isMuted;
@@ -355,13 +358,12 @@ export default function CapturePage() {
       const micTrack = micStream.getAudioTracks()[0];
       if (!micTrack) return null;
 
-      // attach to our main stream
       s.addTrack(micTrack);
       micTrack.enabled = !isMuted;
 
       setHasMicError(false);
 
-      // force refresh of React state so UI updates reliably
+      // refresh state so UI updates reliably
       setStream(new MediaStream(s.getTracks()));
       streamRef.current = s;
 
@@ -487,11 +489,6 @@ export default function CapturePage() {
     }
   }
 
-  const navigateTo = (path: string) => {
-    // works regardless of router (wouter/react-router/etc.)
-    if (typeof window !== "undefined") window.location.href = path;
-  };
-
   const processCapture = async (landscapeBlob?: Blob, portraitBlob?: Blob) => {
     setProcessing(true);
 
@@ -509,8 +506,6 @@ export default function CapturePage() {
       const lFile = new File([landscapeBlob], `FlipCastDuo_Landscape_${formattedTS}.${ext}`, { type });
       const pFile = new File([portraitBlob], `FlipCastDuo_Portrait_${formattedTS}.${ext}`, { type });
 
-      // iOS Safari is flaky with multiple automatic downloads.
-      // Prefer Share Sheet when available.
       const canShareFiles =
         typeof navigator !== "undefined" &&
         (navigator as any).canShare?.({ files: [lFile, pFile] }) &&
@@ -534,7 +529,6 @@ export default function CapturePage() {
           setTimeout(() => URL.revokeObjectURL(url), 2000);
         };
 
-        // slight stagger helps some browsers
         download(lFile);
         setTimeout(() => download(pFile), 350);
       }
@@ -591,7 +585,6 @@ export default function CapturePage() {
 
         await waitForVideoReady(lv);
 
-        // ask for mic ONLY when starting recording (prevents "mic denied" on load)
         let micTrack: MediaStreamTrack | null = null;
         if (!isMuted) {
           micTrack = await ensureMicTrack();
@@ -610,9 +603,7 @@ export default function CapturePage() {
           try {
             lStream.addTrack(micTrack.clone());
             pStream.addTrack(micTrack.clone());
-          } catch {
-            // if clone fails, just skip audio for the prototype
-          }
+          } catch {}
         }
 
         const mimeType = pickBestMimeType();
@@ -698,6 +689,15 @@ export default function CapturePage() {
       await processCapture(lBlob, pBlob);
     }
   };
+
+  // active button styling
+  const isOnCapture = location === "/";
+  const isOnGallery = location.startsWith("/gallery");
+  const isOnAccessory = location.startsWith("/accessory");
+
+  const navBtnBase = "px-5 py-2 rounded-full text-sm font-medium transition-colors";
+  const navBtnActive = "bg-white/15 text-white";
+  const navBtnInactive = "text-white/75 hover:text-white";
 
   return (
     <div className="min-h-[100dvh] bg-zinc-950 relative overflow-hidden">
@@ -826,9 +826,8 @@ export default function CapturePage() {
             <div className="col-span-2 mt-2">
               <div className="relative w-full rounded-[2rem] bg-black/35 border border-white/10 backdrop-blur-xl shadow-[0_24px_70px_rgba(0,0,0,0.6)] px-6 py-5">
                 <div className="grid items-center gap-6 [grid-template-columns:260px_1fr] max-md:[grid-template-columns:200px_1fr]">
-                  {/* LOGO AREA (no clipping) */}
+                  {/* LOGO AREA */}
                   <div className="h-[86px] rounded-2xl border border-white/10 bg-white/5 flex items-center px-4 overflow-visible">
-                    {/* Put your SVG in /public and reference it here */}
                     <img
                       src="/flipcastduo-logo.svg"
                       alt="FlipCastDuo"
@@ -878,23 +877,23 @@ export default function CapturePage() {
                       </div>
                     </div>
 
-                    {/* NEW NAV BUTTONS (NOW WIRED) */}
+                    {/* NEW NAV BUTTONS (WIRED CORRECTLY) */}
                     <div className="flex bg-white/10 border border-white/10 rounded-full p-2 gap-2">
                       <button
-                        className="px-5 py-2 rounded-full bg-white/15 text-white text-sm font-medium"
-                        onClick={() => navigateTo("/capture")}
+                        className={`${navBtnBase} ${isOnCapture ? navBtnActive : navBtnInactive}`}
+                        onClick={() => go("/")}
                       >
                         Capture
                       </button>
                       <button
-                        className="px-5 py-2 rounded-full text-white/75 hover:text-white text-sm font-medium"
-                        onClick={() => navigateTo("/gallery")}
+                        className={`${navBtnBase} ${isOnGallery ? navBtnActive : navBtnInactive}`}
+                        onClick={() => go("/gallery")}
                       >
                         Gallery
                       </button>
                       <button
-                        className="px-5 py-2 rounded-full text-white/75 hover:text-white text-sm font-medium"
-                        onClick={() => navigateTo("/accessory")}
+                        className={`${navBtnBase} ${isOnAccessory ? navBtnActive : navBtnInactive}`}
+                        onClick={() => go("/accessory")}
                       >
                         Accessory
                       </button>
