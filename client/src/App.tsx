@@ -5,7 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 
-// Import Pages
+// Pages
 import CapturePage from "@/pages/capture";
 import GalleryPage from "@/pages/gallery";
 import AccessoryPage from "@/pages/accessory";
@@ -21,7 +21,7 @@ function Router() {
   );
 }
 
-function App() {
+export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
@@ -31,5 +31,3 @@ function App() {
     </QueryClientProvider>
   );
 }
-
-export default App;
