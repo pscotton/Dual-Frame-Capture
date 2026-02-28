@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Cloud, CloudOff, Video, Camera, Loader2, Mic, MicOff } from "lucide-react";
 import { useCreateCapture } from "@/hooks/use-captures";
@@ -8,109 +8,6 @@ import { api } from "@shared/routes";
 
 type Mode = "video" | "photo";
 
-/**
- * Your Illustrator SVG pasted as-is.
- * (Yes it’s big — but it means you can paste ONE file and it will match your mock layout.)
- */
-const LAYOUT_SVG = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 1920 1080">
-  <defs>
-    <style>
-      .st0 { fill: #23c1a7; }
-      .st1 { fill-rule: evenodd; }
-      .st1, .st2 { fill: #fff; }
-      .st3 { fill: #231f20; }
-      .st4 { fill: #25a0e0; }
-      .st5 { fill: #0b0f18; }
-      .st6, .st7 { stroke-width: 1.19px; }
-      .st6, .st7, .st8 { stroke: #667268; stroke-miterlimit: 10; }
-      .st6, .st8 { fill: #434345; }
-      .st9 { fill: #808184; }
-      .st8 { stroke-width: 1.05px; }
-      .st10 { fill: #ea1d32; }
-    </style>
-  </defs>
-  <g id="background">
-    <rect class="st5" y="-.28" width="1920" height="1080"/>
-  </g>
-
-  <!-- LOGO -->
-  <g id="logo">
-    <!-- (Your logo group retained exactly) -->
-    <g>
-      <g>
-        <path d="M177.18,860.08h175.6c4.82,0,8.72,3.91,8.72,8.72v46.16c0,4.82-3.91,8.72-8.72,8.72h-175.6c-4.81,0-8.72-3.91-8.72-8.72v-46.16c0-4.82,3.91-8.72,8.72-8.72Z"/>
-        <path class="st2" d="M352.79,860.33c4.67,0,8.47,3.8,8.47,8.47v46.16c0,4.67-3.8,8.47-8.47,8.47h-175.6c-4.67,0-8.47-3.8-8.47-8.47v-46.16c0-4.67,3.8-8.47,8.47-8.47h175.6M352.79,859.83h-175.6c-4.96,0-8.97,4.02-8.97,8.97v46.16c0,4.96,4.02,8.97,8.97,8.97h175.6c4.96,0,8.97-4.02,8.97-8.97v-46.16c0-4.96-4.02-8.97-8.97-8.97h0Z"/>
-      </g>
-      <g>
-        <path class="st2" d="M178.01,908.53v-26.26c0-7.52,6.1-13.62,13.62-13.62h10.51v5.96h-10.38c-4.01,0-7.26,3.25-7.26,7.26v6.1h14.72v5.96h-14.72v19.25h-1.85c-2.57,0-4.65-2.08-4.65-4.65Z"/>
-        <path class="st0" d="M266.62,893.86v-12c0-4.01,3.25-7.26,7.26-7.26h10.88v-5.96h-11.01c-7.52,0-13.62,6.1-13.62,13.62v17.28c0,7.52,6.1,13.62,13.62,13.62h11.01v-5.96h-10.88c-4.01,0-7.26-3.25-7.26-7.26v-6.1Z"/>
-        <path class="st2" d="M205.5,908.53v-39.88h6.26v44.52h-1.61c-2.57,0-4.65-2.08-4.65-4.65Z"/>
-        <path class="st2" d="M241.48,879.52h-13.44v35.77c0,2.57,2.08,4.65,4.65,4.65h1.61v-6.77h7.19c7.52,0,13.62-6.1,13.62-13.62v-6.41c0-7.52-6.1-13.62-13.62-13.62ZM248.61,899.96c0,4.01-3.25,7.26-7.26,7.26h-7.05v-21.74h7.05c4.01,0,7.26,3.25,7.26,7.26v7.22Z"/>
-        <path class="st9" d="M386.71,868.65h-16.51v44.52h16.51c7.52,0,13.62-6.1,13.62-13.62v-17.28c0-7.52-6.1-13.62-13.62-13.62ZM393.83,899.96c0,4.01-3.25,7.26-7.26,7.26h-10.12v-32.61h10.12c4.01,0,7.26,3.25,7.26,7.26v18.1Z"/>
-        <path class="st9" d="M425.08,879.52v27.69h-7.05c-4.01,0-7.26-3.25-7.26-7.26v-20.44h-6.5v20.03c0,7.52,6.1,13.62,13.62,13.62h13.44v-33.65h-6.26Z"/>
-        <path class="st0" d="M312.11,879.52h-13.37c-7.52,0-13.62,6.1-13.62,13.62v6.41c0,7.52,6.1,13.62,13.62,13.62h4.9v-5.96h-4.77c-4.01,0-7.26-3.25-7.26-7.26v-7.22c0-4.01,3.25-7.26,7.26-7.26h7.05v23.05c0,2.57,2.08,4.65,4.65,4.65h1.61v-33.65h-.07Z"/>
-        <path class="st2" d="M216.76,875.99v-7.34h6.26v7.34h-6.26ZM216.76,908.53v-28.69h6.26v33.33h-1.61c-2.57,0-4.65-2.08-4.65-4.65Z"/>
-        <path class="st0" d="M331.02,888.68c-.3-2.41-1.68-4.03-4.27-4.03-2.41,0-3.91,1.62-3.91,3.55,0,2.83,2.89,3.67,6.2,4.69,4.69,1.44,9.02,4.27,9.02,10.47s-4.69,10.65-11.19,10.65c-6.02,0-11.79-4.09-11.79-11.79h6.26c.3,4.03,2.35,6.08,5.66,6.08,2.89,0,4.81-1.86,4.81-4.57,0-2.29-1.74-3.79-5.66-5.05-8.18-2.59-9.57-6.14-9.57-9.93,0-5.9,4.99-9.81,10.47-9.81s10.05,3.85,10.23,9.75h-6.26Z"/>
-      </g>
-      <path class="st0" d="M354.18,879.52h-4.25v-10.88h-6.5v10.88h-4.25v5.96h4.25v23.05c0,2.57,2.08,4.65,4.65,4.65h1.85v-27.69h4.25v-5.96Z"/>
-    </g>
-  </g>
-
-  <!-- FRAMES -->
-  <g id="landscape_x5F_frame">
-    <rect class="st7" x="99.31" y="96.38" width="1280" height="720" rx="41.38" ry="41.38"/>
-  </g>
-  <g id="portrait_x5F_frame">
-    <rect class="st7" x="1427.62" y="93.74" width="405" height="720" rx="41.38" ry="41.38"/>
-  </g>
-
-  <!-- CONTROLS -->
-  <g id="capture_x5F_toggle">
-    <g>
-      <path class="st7" d="M122,1019.54c-12.91,0-23.41-10.5-23.41-23.41s10.5-23.41,23.41-23.41h143.26c12.91,0,23.41,10.5,23.41,23.41s-10.5,23.41-23.41,23.41H122Z"/>
-    </g>
-  </g>
-  <g id="gallery_x5F_toggle">
-    <g>
-      <path class="st6" d="M335.8,1019.54c-12.91,0-23.41-10.5-23.41-23.41s10.5-23.41,23.41-23.41h143.26c12.91,0,23.41,10.5,23.41,23.41s-10.5,23.41-23.41,23.41h-143.26Z"/>
-    </g>
-  </g>
-  <g id="accessory_x5F_toggle">
-    <g>
-      <path class="st6" d="M549.6,1019.54c-12.91,0-23.41-10.5-23.41-23.41s10.5-23.41,23.41-23.41h143.26c12.91,0,23.41,10.5,23.41,23.41s-10.5,23.41-23.41,23.41h-143.26Z"/>
-    </g>
-  </g>
-  <g id="record_x5F_button">
-    <g>
-      <path class="st2" d="M1630.12,854.22c41.3,0,74.91,33.6,74.91,74.91s-33.6,74.91-74.91,74.91-74.91-33.6-74.91-74.91,33.6-74.91,74.91-74.91M1630.12,845.66c-46.1,0-83.47,37.37-83.47,83.47s37.37,83.47,83.47,83.47,83.47-37.37,83.47-83.47-37.37-83.47-83.47-83.47h0Z"/>
-      <g>
-        <path class="st10" d="M1630.12,1000.61c-39.42,0-71.48-32.07-71.48-71.48s32.07-71.48,71.48-71.48,71.48,32.07,71.48,71.48-32.07,71.48-71.48,71.48Z"/>
-        <path class="st3" d="M1630.12,861.07c37.53,0,68.06,30.53,68.06,68.06s-30.53,68.06-68.06,68.06-68.06-30.53-68.06-68.06,30.53-68.06,68.06-68.06M1630.12,854.22c-41.3,0-74.91,33.6-74.91,74.91s33.6,74.91,74.91,74.91,74.91-33.6,74.91-74.91-33.6-74.91-74.91-74.91h0Z"/>
-      </g>
-    </g>
-  </g>
-  <g id="video_x5F_photo_x5F_button_x5F_frame">
-    <path class="st7" d="M962.61,937.46c-22.71,0-41.12-18.41-41.12-41.12s18.41-41.12,41.12-41.12h371.55c22.71,0,41.12,18.41,41.12,41.12s-18.41,41.12-41.12,41.12h-371.55Z"/>
-  </g>
-  <g id="video_x5F_toggle">
-    <g>
-      <path class="st2" d="M962.61,929.13c-18.08,0-32.78-14.71-32.78-32.78s14.71-32.78,32.78-32.78h147.83c18.08,0,32.78,14.71,32.78,32.78s-14.71,32.78-32.78,32.78h-147.83Z"/>
-    </g>
-  </g>
-  <g id="photo_x5F_toggle">
-    <g>
-      <path d="M1186.27,929.13c-18.08,0-32.78-14.71-32.78-32.78s14.71-32.78,32.78-32.78h147.83c18.08,0,32.78,14.71,32.78,32.78s-14.71,32.78-32.78,32.78h-147.83Z"/>
-    </g>
-  </g>
-  <g id="mic_x5F_toggle">
-    <g>
-      <circle class="st7" cx="850.87" cy="896.34" r="41.12"/>
-    </g>
-  </g>
-</svg>`;
-
-// ---------- helpers ----------
 function pickBestMimeType() {
   const candidates = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"];
   for (const c of candidates) {
@@ -140,13 +37,13 @@ async function waitForVideoReady(video: HTMLVideoElement) {
     video.addEventListener("loadeddata", onReady);
 
     const start = Date.now();
-    const t = window.setInterval(() => {
+    const t = setInterval(() => {
       if (video.videoWidth > 0 && video.videoHeight > 0) {
-        window.clearInterval(t);
+        clearInterval(t);
         cleanup();
         resolve();
       } else if (Date.now() - start > 3000) {
-        window.clearInterval(t);
+        clearInterval(t);
         cleanup();
         resolve();
       }
@@ -197,6 +94,14 @@ function drawAspectCropZoomed(
   ctx.drawImage(video, srcX, srcY, srcW, srcH, 0, 0, outW, outH);
 }
 
+function isIOS() {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  const iOS = /iPhone|iPad|iPod/i.test(ua);
+  const iPadOS13 = navigator.platform === "MacIntel" && (navigator as any).maxTouchPoints > 1;
+  return iOS || iPadOS13;
+}
+
 /**
  * Mini zoom UI:
  * - Tiny “1.0×” chip always visible
@@ -205,12 +110,12 @@ function drawAspectCropZoomed(
 function ZoomMiniHUD({
   zoom,
   onSetZoom,
-  style,
+  anchorClass,
   ariaLabel,
 }: {
   zoom: number;
   onSetZoom: (v: number) => void;
-  style: React.CSSProperties;
+  anchorClass: string;
   ariaLabel: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -231,7 +136,7 @@ function ZoomMiniHUD({
   const pct = ((zoom - 1) / (3 - 1)) * 100;
 
   return (
-    <div className="absolute z-30 pointer-events-auto select-none" style={style}>
+    <div className={`absolute ${anchorClass} z-30 pointer-events-auto select-none`}>
       <button
         type="button"
         onClick={() => showTemporarily()}
@@ -283,19 +188,14 @@ function ZoomMiniHUD({
   );
 }
 
-// --- viewBox positioning helpers (1920x1080) ---
-const VB_W = 1920;
-const VB_H = 1080;
-const pctX = (x: number) => `${(x / VB_W) * 100}%`;
-const pctY = (y: number) => `${(y / VB_H) * 100}%`;
-const pctW = (w: number) => `${(w / VB_W) * 100}%`;
-const pctH = (h: number) => `${(h / VB_H) * 100}%`;
-
 export default function CapturePage() {
   const [mode, setMode] = useState<Mode>("video");
   const [isRecording, setIsRecording] = useState(false);
   const [cloudSync, setCloudSync] = useState(true);
+
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
   const [hasCameraError, setHasCameraError] = useState(false);
   const [hasMicError, setHasMicError] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -338,6 +238,22 @@ export default function CapturePage() {
   const { mutateAsync: createCapture } = useCreateCapture();
   const { toast } = useToast();
 
+  // --- Orientation guard (web only) ---
+  const [isPortrait, setIsPortrait] = useState(false);
+  useEffect(() => {
+    const check = () => {
+      if (typeof window === "undefined") return;
+      setIsPortrait(window.matchMedia?.("(orientation: portrait)")?.matches ?? window.innerHeight > window.innerWidth);
+    };
+    check();
+    window.addEventListener("resize", check);
+    window.addEventListener("orientationchange", check);
+    return () => {
+      window.removeEventListener("resize", check);
+      window.removeEventListener("orientationchange", check);
+    };
+  }, []);
+
   // Smooth animation loop
   useEffect(() => {
     let raf = 0;
@@ -361,7 +277,7 @@ export default function CapturePage() {
     return () => cancelAnimationFrame(raf);
   }, [landscapeZoomTarget, portraitZoomTarget]);
 
-  // Camera init
+  // Camera init (VIDEO ONLY at start — avoids iOS mic-denied-on-load)
   useEffect(() => {
     let mounted = true;
 
@@ -369,29 +285,20 @@ export default function CapturePage() {
       try {
         const mediaStream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
-          audio: true,
+          audio: false,
         });
+
         if (!mounted) return;
         setStream(mediaStream);
+        streamRef.current = mediaStream;
+
         setHasCameraError(false);
+        // don’t assume mic state until user tries to record
         setHasMicError(false);
       } catch (err: any) {
-        console.error("Access denied or unavailable:", err);
+        console.error("Camera unavailable:", err);
         if (!mounted) return;
-
-        // fall back to video-only
-        try {
-          const videoOnly = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
-          });
-          if (!mounted) return;
-          setStream(videoOnly);
-          setHasCameraError(false);
-          setHasMicError(true);
-        } catch {
-          if (!mounted) return;
-          setHasCameraError(true);
-        }
+        setHasCameraError(true);
       }
     }
 
@@ -399,10 +306,10 @@ export default function CapturePage() {
 
     return () => {
       mounted = false;
-      setStream((prev) => {
-        prev?.getTracks().forEach((t) => t.stop());
-        return prev;
-      });
+      const s = streamRef.current;
+      s?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+      setStream(null);
     };
   }, []);
 
@@ -425,19 +332,46 @@ export default function CapturePage() {
     };
     void tryPlay();
 
-    stream.getAudioTracks().forEach((t) => (t.enabled = !isMuted));
-
     return () => {
       if (lv) lv.srcObject = null;
       if (pv) pv.srcObject = null;
     };
-  }, [stream, isMuted]);
+  }, [stream]);
 
-  // Toggle mute
-  useEffect(() => {
-    if (!stream) return;
-    stream.getAudioTracks().forEach((t) => (t.enabled = !isMuted));
-  }, [isMuted, stream]);
+  // Ensure mic only when needed (user gesture)
+  const ensureMicTrack = async () => {
+    const s = streamRef.current;
+    if (!s) return null;
+
+    // already have audio?
+    const existing = s.getAudioTracks()[0];
+    if (existing) {
+      existing.enabled = !isMuted;
+      return existing;
+    }
+
+    try {
+      const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const micTrack = micStream.getAudioTracks()[0];
+      if (!micTrack) return null;
+
+      // attach to our main stream
+      s.addTrack(micTrack);
+      micTrack.enabled = !isMuted;
+
+      setHasMicError(false);
+
+      // force refresh of React state so UI updates reliably
+      setStream(new MediaStream(s.getTracks()));
+      streamRef.current = s;
+
+      return micTrack;
+    } catch (e) {
+      console.warn("Mic denied:", e);
+      setHasMicError(true);
+      return null;
+    }
+  };
 
   // Wheel zoom (desktop testing)
   useEffect(() => {
@@ -553,6 +487,11 @@ export default function CapturePage() {
     }
   }
 
+  const navigateTo = (path: string) => {
+    // works regardless of router (wouter/react-router/etc.)
+    if (typeof window !== "undefined") window.location.href = path;
+  };
+
   const processCapture = async (landscapeBlob?: Blob, portraitBlob?: Blob) => {
     setProcessing(true);
 
@@ -565,24 +504,44 @@ export default function CapturePage() {
       if (!landscapeBlob || !portraitBlob) throw new Error("Missing output blobs");
 
       const ext = mode === "video" ? "webm" : "png";
+      const type = mode === "video" ? "video/webm" : "image/png";
 
-      const download = (blob: Blob, suffix: string) => {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `FlipCastDuo_${suffix}_${formattedTS}.${ext}`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 2000);
-      };
+      const lFile = new File([landscapeBlob], `FlipCastDuo_Landscape_${formattedTS}.${ext}`, { type });
+      const pFile = new File([portraitBlob], `FlipCastDuo_Portrait_${formattedTS}.${ext}`, { type });
 
-      download(landscapeBlob, "Landscape");
-      download(portraitBlob, "Portrait");
+      // iOS Safari is flaky with multiple automatic downloads.
+      // Prefer Share Sheet when available.
+      const canShareFiles =
+        typeof navigator !== "undefined" &&
+        (navigator as any).canShare?.({ files: [lFile, pFile] }) &&
+        typeof (navigator as any).share === "function";
+
+      if (isIOS() && canShareFiles) {
+        await (navigator as any).share({
+          title: "FlipCastDuo Capture",
+          text: "Save both formats",
+          files: [lFile, pFile],
+        });
+      } else {
+        const download = (file: File) => {
+          const url = URL.createObjectURL(file);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = file.name;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 2000);
+        };
+
+        // slight stagger helps some browsers
+        download(lFile);
+        setTimeout(() => download(pFile), 350);
+      }
 
       toast({
-        title: "Saved to Downloads",
-        description: `Both ${mode} formats have been saved to your device.`,
+        title: "Saved",
+        description: `Both ${mode} formats were created.`,
       });
 
       const landscapeUrl = URL.createObjectURL(landscapeBlob);
@@ -616,7 +575,7 @@ export default function CapturePage() {
   };
 
   const handleCapture = async () => {
-    if (!stream || hasCameraError) return;
+    if (!streamRef.current || hasCameraError) return;
 
     if (mode === "video") {
       if (isRecording) {
@@ -632,6 +591,12 @@ export default function CapturePage() {
 
         await waitForVideoReady(lv);
 
+        // ask for mic ONLY when starting recording (prevents "mic denied" on load)
+        let micTrack: MediaStreamTrack | null = null;
+        if (!isMuted) {
+          micTrack = await ensureMicTrack();
+        }
+
         const width = lv.videoWidth || 1920;
         const height = lv.videoHeight || 1080;
 
@@ -641,10 +606,13 @@ export default function CapturePage() {
         const lStream = landscapeCanvasRef.current!.captureStream(30);
         const pStream = portraitCanvasRef.current!.captureStream(30);
 
-        const audioTrack = stream.getAudioTracks()[0];
-        if (audioTrack && !isMuted) {
-          lStream.addTrack(audioTrack.clone());
-          pStream.addTrack(audioTrack.clone());
+        if (micTrack && !isMuted) {
+          try {
+            lStream.addTrack(micTrack.clone());
+            pStream.addTrack(micTrack.clone());
+          } catch {
+            // if clone fails, just skip audio for the prototype
+          }
         }
 
         const mimeType = pickBestMimeType();
@@ -731,96 +699,83 @@ export default function CapturePage() {
     }
   };
 
-  // ---- SVG slot geometry (from your Illustrator file) ----
-  // Landscape frame: x=99.31 y=96.38 w=1280 h=720 rx=41.38
-  // Portrait frame : x=1427.62 y=93.74 w=405  h=720 rx=41.38
-  const LAND = { x: 99.31, y: 96.38, w: 1280, h: 720, r: 41.38 };
-  const PORT = { x: 1427.62, y: 93.74, w: 405, h: 720, r: 41.38 };
-
-  // Mic toggle circle centre & radius: cx=850.87 cy=896.34 r=41.12
-  const MIC = { cx: 850.87, cy: 896.34, r: 41.12 };
-
-  // Video/Photo big pill area (frame path bounds approximated from your group):
-  // Using a bounding box around where the pill sits visually.
-  const MODE_PILL = { x: 920, y: 855, w: 470, h: 82 };
-
-  // Bottom nav buttons (Capture/Gallery/Accessory) approx:
-  const NAV_CAPTURE = { x: 98, y: 972, w: 190, h: 47 };
-  const NAV_GALLERY = { x: 312, y: 972, w: 190, h: 47 };
-  const NAV_ACCESS = { x: 526, y: 972, w: 190, h: 47 };
-
-  // Record button centre at ~ (1630,929) radius ~83 (from your record group)
-  const REC = { cx: 1630.12, cy: 929.13, r: 83.47 };
-
   return (
-    <div className="min-h-[100dvh] bg-[#0B0F18] overflow-hidden">
-      {/* The whole UI is locked to your SVG’s 16:9 canvas and scales down on phones. */}
-      <div className="w-screen h-[100dvh] flex items-center justify-center">
-        <div
-          className="relative"
-          style={{
-            height: "100dvh",
-            width: "calc(100dvh * (16 / 9))",
-            maxWidth: "100vw",
-            maxHeight: "100dvh",
-            aspectRatio: "16 / 9",
-          }}
-        >
-          {/* SVG Layout background */}
-          <div
-            className="absolute inset-0 pointer-events-none select-none"
-            aria-hidden="true"
-            dangerouslySetInnerHTML={{ __html: LAYOUT_SVG }}
-          />
+    <div className="min-h-[100dvh] bg-zinc-950 relative overflow-hidden">
+      {/* Subtle premium backdrop */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[900px] h-[900px] rounded-full bg-white/5 blur-3xl" />
+        <div className="absolute -bottom-48 right-[-200px] w-[700px] h-[700px] rounded-full bg-white/4 blur-3xl" />
+      </div>
 
-          {/* If camera error, show message inside the landscape slot (still matches layout) */}
-          {hasCameraError && (
-            <div
-              className="absolute flex items-center justify-center text-center px-8"
-              style={{
-                left: pctX(LAND.x),
-                top: pctY(LAND.y),
-                width: pctW(LAND.w),
-                height: pctH(LAND.h),
-              }}
-            >
-              <div className="w-full h-full rounded-[2rem] border border-white/10 bg-black/35 backdrop-blur-md flex flex-col items-center justify-center gap-3">
-                <Camera className="w-14 h-14 text-white/45" />
-                <div className="text-white font-semibold">Camera Unavailable</div>
-                <div className="text-white/60 text-sm max-w-md">
-                  Please grant camera permissions or ensure a camera is connected to use the live preview.
-                </div>
-              </div>
+      {/* Top Bar */}
+      <header className="absolute top-0 inset-x-0 p-6 z-20 flex justify-between items-center">
+        <div className="text-white font-display font-semibold text-[17px] tracking-tight flex items-center gap-2">
+          FlipCast<span className="text-white/45">Duo</span>
+        </div>
+
+        <div className="flex gap-2 items-center">
+          {hasMicError && (
+            <div className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium bg-red-500/20 border border-red-500/30 text-red-400 backdrop-blur-md">
+              <MicOff className="w-3 h-3" />
+              Mic Denied
             </div>
           )}
 
-          {/* Landscape video clipped exactly into the landscape frame */}
-          {!hasCameraError && (
+          <button
+            onClick={() => setCloudSync(!cloudSync)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all backdrop-blur-md border ${
+              cloudSync ? "bg-white/12 border-white/18 text-white" : "bg-black/30 border-white/10 text-white/55"
+            }`}
+          >
+            {cloudSync ? <Cloud className="w-4 h-4" /> : <CloudOff className="w-4 h-4" />}
+            <span className="hidden sm:inline">Cloud Sync</span>
+          </button>
+        </div>
+      </header>
+
+      {/* MAIN LAYOUT */}
+      <main className="relative z-10 max-w-7xl mx-auto pt-24 pb-10 px-4 sm:px-8">
+        {hasCameraError ? (
+          <div className="w-full min-h-[520px] flex flex-col items-center justify-center bg-zinc-900 rounded-3xl border border-zinc-800 text-zinc-500 p-8 text-center">
+            <Camera className="w-16 h-16 mb-4 opacity-50" />
+            <h3 className="text-xl font-medium text-white mb-2">Camera Unavailable</h3>
+            <p className="max-w-md">Please grant camera permissions or ensure a camera is connected to use the live preview.</p>
+          </div>
+        ) : (
+          <div
+            className="
+              grid
+              gap-6
+              items-start
+              [grid-template-columns:1fr_140px_minmax(260px,360px)]
+              max-lg:[grid-template-columns:1fr_120px_minmax(220px,320px)]
+            "
+          >
+            {/* Landscape */}
             <div
               ref={landscapeBoxRef}
               onTouchStart={handleTouchStart("l")}
               onTouchMove={handleTouchMove("l")}
               onTouchEnd={handleTouchEnd("l")}
-              className="absolute overflow-hidden"
-              style={{
-                left: pctX(LAND.x),
-                top: pctY(LAND.y),
-                width: pctW(LAND.w),
-                height: pctH(LAND.h),
-                borderRadius: `${(LAND.r / VB_W) * 100}vw`, // scales nicely
-                touchAction: "none",
-              }}
+              className="relative w-full aspect-video bg-black rounded-[2rem] overflow-hidden shadow-2xl ring-1 ring-white/10"
+              style={{ touchAction: "none" }}
             >
               <video
                 ref={landscapeVideoRef}
                 autoPlay
                 playsInline
                 muted
-                className="w-full h-full object-cover"
                 style={{ transform: `scale(${landscapeZoomDisplay})`, transformOrigin: "center center" }}
+                className="w-full h-full object-cover"
               />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-transparent pointer-events-none" />
+
+              <div className="absolute bottom-4 left-6 px-3 py-1.5 bg-black/35 backdrop-blur-md rounded-lg text-white text-xs font-medium border border-white/10 uppercase tracking-wider pointer-events-none">
+                16:9 Landscape
+              </div>
+
               {isRecording && (
-                <div className="absolute top-5 right-5 flex items-center gap-2 pointer-events-none">
+                <div className="absolute top-6 right-6 flex items-center gap-2 pointer-events-none">
                   <div className="w-2.5 h-2.5 bg-red-500 rounded-full" />
                   <div className="text-white/70 text-[11px] tracking-wide uppercase">REC</div>
                 </div>
@@ -829,209 +784,192 @@ export default function CapturePage() {
               <ZoomMiniHUD
                 zoom={landscapeZoomTarget}
                 onSetZoom={(v) => setLandscapeZoomTarget(clamp(v, 1, 3))}
+                anchorClass="bottom-4 right-4"
                 ariaLabel="Landscape zoom"
-                style={{
-                  right: "16px",
-                  bottom: "16px",
-                }}
               />
             </div>
-          )}
 
-          {/* Portrait video clipped exactly into the portrait frame */}
-          {!hasCameraError && (
+            <div />
+
+            {/* Portrait */}
             <div
               ref={portraitBoxRef}
               onTouchStart={handleTouchStart("p")}
               onTouchMove={handleTouchMove("p")}
               onTouchEnd={handleTouchEnd("p")}
-              className="absolute overflow-hidden"
-              style={{
-                left: pctX(PORT.x),
-                top: pctY(PORT.y),
-                width: pctW(PORT.w),
-                height: pctH(PORT.h),
-                borderRadius: `${(PORT.r / VB_W) * 100}vw`,
-                touchAction: "none",
-              }}
+              className="relative w-full aspect-[9/16] bg-black rounded-[2rem] overflow-hidden shadow-2xl ring-1 ring-white/10"
+              style={{ touchAction: "none" }}
             >
               <video
                 ref={portraitVideoRef}
                 autoPlay
                 playsInline
                 muted
-                className="w-full h-full object-cover"
                 style={{ transform: `scale(${portraitZoomDisplay})`, transformOrigin: "center center" }}
+                className="w-full h-full object-cover"
               />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-transparent pointer-events-none" />
+
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-black/35 backdrop-blur-md rounded-lg text-white text-xs font-medium border border-white/10 uppercase tracking-wider whitespace-nowrap pointer-events-none">
+                9:16 Portrait
+              </div>
 
               <ZoomMiniHUD
                 zoom={portraitZoomTarget}
                 onSetZoom={(v) => setPortraitZoomTarget(clamp(v, 1, 3))}
+                anchorClass="top-4 right-4"
                 ariaLabel="Portrait zoom"
-                style={{
-                  right: "16px",
-                  top: "16px",
-                }}
               />
             </div>
-          )}
 
-          {/* Top-right cloud sync button (sits in your top area, matches “techy”) */}
-          <div className="absolute z-20" style={{ right: pctX(90), top: pctY(20) }}>
-            <button
-              onClick={() => setCloudSync(!cloudSync)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all backdrop-blur-md border ${
-                cloudSync ? "bg-white/12 border-white/18 text-white" : "bg-black/30 border-white/10 text-white/55"
-              }`}
-            >
-              {cloudSync ? <Cloud className="w-4 h-4" /> : <CloudOff className="w-4 h-4" />}
-              <span className="hidden sm:inline">Cloud Sync</span>
-            </button>
-          </div>
-
-          {/* Mic denied badge (top-right) */}
-          {hasMicError && (
-            <div
-              className="absolute z-30 flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium bg-red-500/20 border border-red-500/30 text-red-300 backdrop-blur-md"
-              style={{ right: pctX(90), top: pctY(72) }}
-            >
-              <MicOff className="w-3 h-3" />
-              Mic Denied
-            </div>
-          )}
-
-          {/* Mic toggle button positioned on your MIC circle */}
-          {mode === "video" && !hasMicError && !hasCameraError && (
-            <button
-              onClick={() => setIsMuted(!isMuted)}
-              className="absolute z-30 flex items-center justify-center rounded-full border backdrop-blur-xl transition-all"
-              style={{
-                left: `calc(${pctX(MIC.cx)} - ${pctW(MIC.r)} )`,
-                top: `calc(${pctY(MIC.cy)} - ${pctH(MIC.r)} )`,
-                width: pctW(MIC.r * 2),
-                height: pctH(MIC.r * 2),
-                borderColor: isMuted ? "rgba(239,68,68,0.35)" : "rgba(255,255,255,0.12)",
-                background: isMuted ? "rgba(239,68,68,0.12)" : "rgba(0,0,0,0.25)",
-                color: isMuted ? "rgb(239,68,68)" : "rgba(255,255,255,0.92)",
-              }}
-              aria-label={isMuted ? "Unmute microphone" : "Mute microphone"}
-            >
-              {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
-            </button>
-          )}
-
-          {/* Video/Photo mode pill positioned where your SVG pill is */}
-          <div
-            className="absolute z-30 flex items-center justify-center"
-            style={{
-              left: pctX(MODE_PILL.x),
-              top: pctY(MODE_PILL.y),
-              width: pctW(MODE_PILL.w),
-              height: pctH(MODE_PILL.h),
-            }}
-          >
-            <div className="flex bg-black/35 backdrop-blur-xl p-1 rounded-full border border-white/10 shadow-xl">
-              {(["video", "photo"] as Mode[]).map((m) => (
-                <button
-                  key={m}
-                  onClick={() => !isRecording && setMode(m)}
-                  disabled={isRecording}
-                  className={`relative px-6 py-2 rounded-full text-sm font-medium uppercase tracking-wider transition-colors ${
-                    mode === m ? "text-black" : "text-white/70 hover:text-white"
-                  } ${isRecording ? "opacity-50 cursor-not-allowed" : ""}`}
-                >
-                  {mode === m && (
-                    <motion.div
-                      layoutId="active-mode"
-                      className="absolute inset-0 bg-white rounded-full z-0"
-                      transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+            {/* Controls dock */}
+            <div className="col-span-2 mt-2">
+              <div className="relative w-full rounded-[2rem] bg-black/35 border border-white/10 backdrop-blur-xl shadow-[0_24px_70px_rgba(0,0,0,0.6)] px-6 py-5">
+                <div className="grid items-center gap-6 [grid-template-columns:260px_1fr] max-md:[grid-template-columns:200px_1fr]">
+                  {/* LOGO AREA (no clipping) */}
+                  <div className="h-[86px] rounded-2xl border border-white/10 bg-white/5 flex items-center px-4 overflow-visible">
+                    {/* Put your SVG in /public and reference it here */}
+                    <img
+                      src="/flipcastduo-logo.svg"
+                      alt="FlipCastDuo"
+                      className="h-[52px] w-auto object-contain"
                     />
+                  </div>
+
+                  <div className="flex flex-col items-center justify-center gap-4">
+                    <div className="flex items-center gap-4">
+                      {mode === "video" && (
+                        <button
+                          onClick={() => setIsMuted(!isMuted)}
+                          className={`p-3 rounded-full backdrop-blur-xl border transition-all ${
+                            isMuted
+                              ? "bg-red-500/18 border-red-500/25 text-red-500"
+                              : "bg-black/35 border-white/10 text-white hover:bg-black/55"
+                          }`}
+                          title={isMuted ? "Unmute" : "Mute"}
+                        >
+                          {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                        </button>
+                      )}
+
+                      <div className="flex bg-black/35 backdrop-blur-xl p-1 rounded-full border border-white/10 shadow-xl">
+                        {(["video", "photo"] as Mode[]).map((m) => (
+                          <button
+                            key={m}
+                            onClick={() => !isRecording && setMode(m)}
+                            disabled={isRecording}
+                            className={`relative px-6 py-2 rounded-full text-sm font-medium uppercase tracking-wider transition-colors ${
+                              mode === m ? "text-black" : "text-white/70 hover:text-white"
+                            } ${isRecording ? "opacity-50 cursor-not-allowed" : ""}`}
+                          >
+                            {mode === m && (
+                              <motion.div
+                                layoutId="active-mode"
+                                className="absolute inset-0 bg-white rounded-full z-0"
+                                transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                              />
+                            )}
+                            <span className="relative z-10 flex items-center gap-2">
+                              {m === "video" ? <Video className="w-4 h-4" /> : <Camera className="w-4 h-4" />}
+                              {m}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* NEW NAV BUTTONS (NOW WIRED) */}
+                    <div className="flex bg-white/10 border border-white/10 rounded-full p-2 gap-2">
+                      <button
+                        className="px-5 py-2 rounded-full bg-white/15 text-white text-sm font-medium"
+                        onClick={() => navigateTo("/capture")}
+                      >
+                        Capture
+                      </button>
+                      <button
+                        className="px-5 py-2 rounded-full text-white/75 hover:text-white text-sm font-medium"
+                        onClick={() => navigateTo("/gallery")}
+                      >
+                        Gallery
+                      </button>
+                      <button
+                        className="px-5 py-2 rounded-full text-white/75 hover:text-white text-sm font-medium"
+                        onClick={() => navigateTo("/accessory")}
+                      >
+                        Accessory
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Record button */}
+            <div className="mt-2 flex items-center justify-center">
+              <button
+                onClick={handleCapture}
+                disabled={processing || hasCameraError}
+                className="relative w-24 h-24 rounded-full flex items-center justify-center outline-none group disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label={mode === "video" ? (isRecording ? "Stop recording" : "Start recording") : "Take photo"}
+              >
+                <div
+                  className={`absolute inset-0 rounded-full border-4 transition-colors duration-300 ${
+                    isRecording ? "border-red-500/50" : "border-white"
+                  }`}
+                />
+
+                <motion.div
+                  className={`w-[78px] h-[78px] rounded-full flex items-center justify-center transition-colors ${
+                    mode === "video" ? (isRecording ? "bg-red-500 scale-75 rounded-xl" : "bg-red-500") : "bg-white"
+                  }`}
+                  layout
+                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                >
+                  {processing && (
+                    <Loader2 className={`w-9 h-9 animate-spin ${mode === "photo" ? "text-black" : "text-white"}`} />
                   )}
-                  <span className="relative z-10 flex items-center gap-2">
-                    {m === "video" ? <Video className="w-4 h-4" /> : <Camera className="w-4 h-4" />}
-                    {m}
-                  </span>
-                </button>
-              ))}
+                </motion.div>
+              </button>
             </div>
           </div>
+        )}
+      </main>
 
-          {/* Bottom nav buttons aligned to your SVG buttons */}
-          <div className="absolute z-30" style={{ left: pctX(NAV_CAPTURE.x), top: pctY(NAV_CAPTURE.y) }}>
-            <button className="w-full h-full px-6 py-3 rounded-full bg-white/15 border border-white/10 text-white text-sm font-medium backdrop-blur-xl shadow-lg">
-              Capture
-            </button>
-          </div>
-
-          <div className="absolute z-30" style={{ left: pctX(NAV_GALLERY.x), top: pctY(NAV_GALLERY.y) }}>
-            <button className="w-full h-full px-6 py-3 rounded-full bg-black/20 border border-white/10 text-white/60 text-sm font-medium backdrop-blur-xl hover:text-white hover:bg-black/30 transition">
-              Gallery
-            </button>
-          </div>
-
-          <div className="absolute z-30" style={{ left: pctX(NAV_ACCESS.x), top: pctY(NAV_ACCESS.y) }}>
-            <button className="w-full h-full px-6 py-3 rounded-full bg-black/20 border border-white/10 text-white/60 text-sm font-medium backdrop-blur-xl hover:text-white hover:bg-black/30 transition">
-              Accessory
-            </button>
-          </div>
-
-          {/* Record button positioned to your red button */}
-          <div
-            className="absolute z-40 flex items-center justify-center"
-            style={{
-              left: `calc(${pctX(REC.cx)} - ${pctW(REC.r)} )`,
-              top: `calc(${pctY(REC.cy)} - ${pctH(REC.r)} )`,
-              width: pctW(REC.r * 2),
-              height: pctH(REC.r * 2),
-            }}
+      {/* Portrait overlay so it behaves "landscape-only" on web */}
+      <AnimatePresence>
+        {isPortrait && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-md flex items-center justify-center p-8 text-center"
           >
-            <button
-              onClick={handleCapture}
-              disabled={processing || hasCameraError}
-              className="relative w-full h-full rounded-full flex items-center justify-center outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-              aria-label={mode === "video" ? (isRecording ? "Stop recording" : "Start recording") : "Take photo"}
-            >
-              <div
-                className={`absolute inset-[7%] rounded-full border-4 transition-colors duration-300 ${
-                  isRecording ? "border-red-500/55" : "border-white/90"
-                }`}
-              />
-              <motion.div
-                className={`w-[70%] h-[70%] rounded-full flex items-center justify-center transition-colors ${
-                  mode === "video"
-                    ? isRecording
-                      ? "bg-red-500 scale-75 rounded-xl"
-                      : "bg-red-500"
-                    : "bg-white"
-                }`}
-                layout
-                transition={{ type: "spring", stiffness: 400, damping: 25 }}
-              >
-                {processing && (
-                  <Loader2 className={`w-10 h-10 animate-spin ${mode === "photo" ? "text-black" : "text-white"}`} />
-                )}
-              </motion.div>
-            </button>
-          </div>
+            <div className="max-w-md rounded-3xl border border-white/10 bg-black/40 p-6 shadow-2xl">
+              <div className="text-white text-lg font-semibold mb-2">Rotate to Landscape</div>
+              <div className="text-white/70 text-sm">
+                For the investor demo, this prototype is designed to stay in landscape orientation.
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-          {/* Processing overlay */}
-          <AnimatePresence>
-            {processing && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center"
-              >
-                <div className="bg-zinc-900 border border-white/10 p-6 rounded-2xl flex flex-col items-center gap-4 shadow-2xl">
-                  <Loader2 className="w-10 h-10 text-white animate-spin" />
-                  <p className="text-white font-medium">Processing dual formats...</p>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      </div>
+      {/* Processing overlay */}
+      <AnimatePresence>
+        {processing && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center"
+          >
+            <div className="bg-zinc-900 border border-white/10 p-6 rounded-2xl flex flex-col items-center gap-4 shadow-2xl">
+              <Loader2 className="w-10 h-10 text-white animate-spin" />
+              <p className="text-white font-medium">Processing dual formats...</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
