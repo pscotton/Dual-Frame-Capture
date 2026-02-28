@@ -9,19 +9,15 @@ import NotFound from "@/pages/not-found";
 import CapturePage from "@/pages/capture";
 import GalleryPage from "@/pages/gallery";
 import AccessoryPage from "@/pages/accessory";
-import { NavigationBar } from "@/components/navigation-bar";
 
 function Router() {
   return (
-    <>
-      <Switch>
-        <Route path="/" component={CapturePage} />
-        <Route path="/gallery" component={GalleryPage} />
-        <Route path="/accessory" component={AccessoryPage} />
-        <Route component={NotFound} />
-      </Switch>
-      <NavigationBar />
-    </>
+    <Switch>
+      <Route path="/" component={CapturePage} />
+      <Route path="/gallery" component={GalleryPage} />
+      <Route path="/accessory" component={AccessoryPage} />
+      <Route component={NotFound} />
+    </Switch>
   );
 }
 
