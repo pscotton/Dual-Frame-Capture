@@ -728,17 +728,22 @@ export default function Capture() {
         .zoomLeft{ left: 28px; }
         .zoomRight{ right: 28px; top: auto; bottom: 22px; }
 
-        /* Logo position + size (bigger than tiny, but not “in yer face”) */
-        .logo{
-          position:absolute;
-          left: 92px;
-          top: 820px;
-          transform: scale(0.92);
-          transform-origin: left top;
-          filter: drop-shadow(0 10px 24px rgba(0,0,0,0.55));
-          pointer-events:none;
-          opacity: 0.95;
-        }
+        /* Logo position + size (adjust LOGO_SCALE) */
+.logo{
+  position: absolute;
+  left: 92px;
+  top: 820px;
+
+  /* 👇 Change this number to resize the logo */
+  --LOGO_SCALE: 1.65;
+
+  transform: scale(var(--LOGO_SCALE));
+  transform-origin: left top;
+
+  filter: drop-shadow(0 10px 24px rgba(0,0,0,0.55));
+  pointer-events: none;
+  opacity: 0.95;
+}
 
         /* Bottom left tabs */
         .tabs{
