@@ -1,11 +1,55 @@
-import type React from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-const BASE_W = 1920;
-const BASE_H = 1080;
+/**
+ * FlipCastDuo — Capture screen (locked 1920x1080 stage that scales proportionally)
+ * - Video previews work (getUserMedia -> <video>.srcObject)
+ * - No placeholder alerts
+ * - Bottom-left "CAPTURE" is navigation / current page only (doesn't record)
+ * - Big red button does record (Video mode) or takes photos (Photo mode)
+ * - Logo includes the missing first/icon part and is larger (no white panel)
+ */
 
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
+const STAGE_W = 1920;
+const STAGE_H = 1080;
+
+// Frames from your SVG coordinates
+const LAND = { x: 99, y: 96, w: 1280, h: 720, r: 41 };
+const PORT = { x: 1428, y: 94, w: 405, h: 720, r: 41 };
+
+// UI positions (approx from SVG)
+const CLOUD = { x: 1626, y: 28, w: 220, h: 52, r: 26 };
+const LOGO = { x: 70, y: 820, w: 520, h: 130 }; // larger than before
+const LEFT_BTNS = { y: 972, x1: 98, gap: 28, w: 190, h: 54, r: 27 };
+
+const MIC = { cx: 851, cy: 896, r: 41 };
+const MODE = { x: 962, y: 855, w: 412, h: 82, r: 41 };
+const MODE_VIDEO = { x: 962, y: 863, w: 180, h: 66, r: 33 };
+const MODE_PHOTO = { x: 1186, y: 863, w: 180, h: 66, r: 33 };
+
+const REC = { cx: 1630, cy: 929, rOuter: 83, rInner: 71 };
+
+function clamp(n: number, a: number, b: number) {
+  return Math.max(a, Math.min(b, n));
+}
+
+function useScaleToFit(containerRef: React.RefObject<HTMLDivElement>) {
+  const [scale, setScale] = useState(1);
+
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const ro = new ResizeObserver(() => {
+      const rect = el.getBoundingClientRect();
+      const s = Math.min(rect.width / STAGE_W, rect.height / STAGE_H);
+      setScale(clamp(s, 0.2, 2));
+    });
+
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [containerRef]);
+
+  return scale;
 }
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -19,760 +63,793 @@ function downloadBlob(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
-/**
- * Inline SVG logo (cropped)
- * - No panel background
- * - Bigger by default
- */
-function FlipCastLogo({ height = 72 }: { height?: number }) {
+function nowStamp() {
+  const d = new Date();
+  const pad = (x: number) => String(x).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(
+    d.getMinutes()
+  )}-${pad(d.getSeconds())}`;
+}
+
+/** Minimal inline icon set (no dependencies) */
+function IconCamera({ size = 18 }: { size?: number }) {
   return (
-    <svg
-      height={height}
-      viewBox="90 855 410 90"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-label="FlipCast Duo"
-      style={{ display: "block" }}
-    >
-      <defs>
-        <style>
-          {`
-            .st0{fill:#23c1a7}
-            .st2{fill:#fff}
-            .st4{fill:#25a0e0}
-            .st9{fill:#808184}
-          `}
-        </style>
-      </defs>
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={{ display: "block" }}>
+      <path
+        d="M8 7l1.2-2h5.6L16 7h2.2A2.8 2.8 0 0 1 21 9.8v8.4A2.8 2.8 0 0 1 18.2 21H5.8A2.8 2.8 0 0 1 3 18.2V9.8A2.8 2.8 0 0 1 5.8 7H8Z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M12 17a3.2 3.2 0 1 0 0-6.4A3.2 3.2 0 0 0 12 17Z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+    </svg>
+  );
+}
 
-      <g>
-        <g>
-          <path d="M177.18,860.08h175.6c4.82,0,8.72,3.91,8.72,8.72v46.16c0,4.82-3.91,8.72-8.72,8.72h-175.6c-4.81,0-8.72-3.91-8.72-8.72v-46.16c0-4.82,3.91-8.72,8.72-8.72Z" />
-          <path
-            className="st2"
-            d="M352.79,860.33c4.67,0,8.47,3.8,8.47,8.47v46.16c0,4.67-3.8,8.47-8.47,8.47h-175.6c-4.67,0-8.47-3.8-8.47-8.47v-46.16c0-4.67,3.8-8.47,8.47-8.47h175.6M352.79,859.83h-175.6c-4.96,0-8.97,4.02-8.97,8.97v46.16c0,4.96,4.02,8.97,8.97,8.97h175.6c4.96,0,8.97-4.02,8.97-8.97v-46.16c0-4.96-4.02-8.97-8.97-8.97h0Z"
-          />
-        </g>
+function IconVideo({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={{ display: "block" }}>
+      <path
+        d="M4.8 7.5h9.7A2.5 2.5 0 0 1 17 10v4A2.5 2.5 0 0 1 14.5 16.5H4.8A2.8 2.8 0 0 1 2 13.7V10.3A2.8 2.8 0 0 1 4.8 7.5Z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M17 11l5-3v8l-5-3v-2Z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
-        <g>
-          <path
-            className="st2"
-            d="M178.01,908.53v-26.26c0-7.52,6.1-13.62,13.62-13.62h10.51v5.96h-10.38c-4.01,0-7.26,3.25-7.26,7.26v6.1h14.72v5.96h-14.72v19.25h-1.85c-2.57,0-4.65-2.08-4.65-4.65Z"
-          />
-          <path
-            className="st0"
-            d="M266.62,893.86v-12c0-4.01,3.25-7.26,7.26-7.26h10.88v-5.96h-11.01c-7.52,0-13.62,6.1-13.62,13.62v17.28c0,7.52,6.1,13.62,13.62,13.62h11.01v-5.96h-10.88c-4.01,0-7.26-3.25-7.26-7.26v-6.1Z"
-          />
-          <path
-            className="st2"
-            d="M205.5,908.53v-39.88h6.26v44.52h-1.61c-2.57,0-4.65-2.08-4.65-4.65Z"
-          />
-          <path
-            className="st2"
-            d="M241.48,879.52h-13.44v35.77c0,2.57,2.08,4.65,4.65,4.65h1.61v-6.77h7.19c7.52,0,13.62-6.1,13.62-13.62v-6.41c0-7.52-6.1-13.62-13.62-13.62ZM248.61,899.96c0,4.01-3.25,7.26-7.26,7.26h-7.05v-21.74h7.05c4.01,0,7.26,3.25,7.26,7.26v7.22Z"
-          />
-          <path
-            className="st9"
-            d="M386.71,868.65h-16.51v44.52h16.51c7.52,0,13.62-6.1,13.62-13.62v-17.28c0-7.52-6.1-13.62-13.62-13.62ZM393.83,899.96c0,4.01-3.25,7.26-7.26,7.26h-10.12v-32.61h10.12c4.01,0,7.26,3.25,7.26,7.26v18.1Z"
-          />
-          <path
-            className="st9"
-            d="M425.08,879.52v27.69h-7.05c-4.01,0-7.26-3.25-7.26-7.26v-20.44h-6.5v20.03c0,7.52,6.1,13.62,13.62,13.62h13.44v-33.65h-6.26Z"
-          />
-          <path
-            className="st0"
-            d="M312.11,879.52h-13.37c-7.52,0-13.62,6.1-13.62,13.62v6.41c0,7.52,6.1,13.62,13.62,13.62h4.9v-5.96h-4.77c-4.01,0-7.26-3.25-7.26-7.26v-7.22c0-4.01,3.25-7.26,7.26-7.26h7.05v23.05c0,2.57,2.08,4.65,4.65,4.65h1.61v-33.65h-.07Z"
-          />
-          <path
-            className="st2"
-            d="M216.76,875.99v-7.34h6.26v7.34h-6.26ZM216.76,908.53v-28.69h6.26v33.33h-1.61c-2.57,0-4.65-2.08-4.65-4.65Z"
-          />
-          <path
-            className="st0"
-            d="M331.02,888.68c-.3-2.41-1.68-4.03-4.27-4.03-2.41,0-3.91,1.62-3.91,3.55,0,2.83,2.89,3.67,6.2,4.69,4.69,1.44,9.02,4.27,9.02,10.47s-4.69,10.65-11.19,10.65c-6.02,0-11.79-4.09-11.79-11.79h6.26c.3,4.03,2.35,6.08,5.66,6.08,2.89,0,4.81-1.86,4.81-4.57,0-2.29-1.74-3.79-5.66-5.05-8.18-2.59-9.57-6.14-9.57-9.93,0-5.9,4.99-9.81,10.47-9.81s10.05,3.85,10.23,9.75h-6.26Z"
-          />
-        </g>
+function IconMic({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={{ display: "block" }}>
+      <path
+        d="M12 14.5a3 3 0 0 0 3-3v-5a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+      <path
+        d="M6.5 11.5v.7A5.5 5.5 0 0 0 12 17.7a5.5 5.5 0 0 0 5.5-5.5v-.7"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+      <path d="M12 17.7V21" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M9 21h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
 
-        <path
-          className="st0"
-          d="M354.18,879.52h-4.25v-10.88h-6.5v10.88h-4.25v5.96h4.25v23.05c0,2.57,2.08,4.65,4.65,4.65h1.85v-27.69h4.25v-5.96Z"
-        />
-        <path
-          className="st9"
-          d="M455.56,879.52h-13.5c-3.75,0-6.78,3.04-6.78,6.78v20.08c0,3.75,3.04,6.78,6.79,6.78h13.49c3.75,0,6.78-3.04,6.78-6.78v-20.08c0-3.75-3.03-6.78-6.78-6.78ZM455.85,904.9c0,1.28-1.04,2.32-2.32,2.32h-9.43c-1.28,0-2.32-1.04-2.32-2.32v-17.1c0-1.28,1.03-2.32,2.31-2.32h9.44c1.28,0,2.32,1.04,2.32,2.32v17.1Z"
-        />
-      </g>
+function IconCloud({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={{ display: "block" }}>
+      <path
+        d="M8.2 18.5H18a3.5 3.5 0 0 0 .3-7 5.2 5.2 0 0 0-10-1.2A3.7 3.7 0 0 0 8.2 18.5Z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
 
 /**
- * Draw one source <video> into one <canvas> with:
- * - aspect-correct "cover" crop
- * - optional zoom around centre
+ * Logo rebuilt as pure SVG (icon + FlipCastDuo wordmark),
+ * NO white panel behind it, and sized larger.
+ * (This includes the missing first/icon part.)
  */
-function drawCroppedCover(
-  ctx: CanvasRenderingContext2D,
-  video: HTMLVideoElement,
-  canvasW: number,
-  canvasH: number,
-  zoom: number
-) {
-  const vw = video.videoWidth;
-  const vh = video.videoHeight;
-  if (!vw || !vh) return;
+function FlipCastDuoLogo({ width = 520 }: { width?: number }) {
+  return (
+    <svg width={width} viewBox="0 0 620 150" fill="none" style={{ display: "block" }}>
+      {/* Icon (approx from your SVG "logo" group) */}
+      <g transform="translate(0,18) scale(1.05)">
+        <path
+          d="M73.7 58.5h18.6l8.9-8.9H73.8c2.1-12.4 12.9-21.9 25.8-21.9 6.3 0 12.3 2.3 17.1 6.3l6.3-6.3c-6.4-5.7-14.7-8.9-23.4-8.9-19.4 0-35.2 15.8-35.2 35.2 0 8.7 3.2 16.9 8.9 23.4l6.3-6.3c-3.1-3.6-5.1-8-5.9-12.6Z"
+          fill="#23c1a7"
+        />
+        <path
+          d="M97.6 89.3v-8.9c-5.5-.4-10.8-2.6-15-6.2l-6.3 6.3c5.9 5.3 13.5 8.4 21.3 8.8Z"
+          fill="#808184"
+        />
+        <path
+          d="M119.9 54c0-4.8-1.7-9.5-4.8-13.2l-1.6 1.6c2.6 3.3 4.1 7.4 4.1 11.6 0 9.5-7.2 17.5-16.6 18.5v2.3c10.6-1 18.9-10 18.9-20.8Z"
+          fill="#25a0e0"
+        />
+        <rect
+          x="54"
+          y="54"
+          width="70"
+          height="0.9"
+          transform="rotate(-45 54 54)"
+          fill="#23c1a7"
+        />
+      </g>
 
-  // We want to "cover" the canvas
-  const canvasAspect = canvasW / canvasH;
-  const videoAspect = vw / vh;
-
-  let srcW = vw;
-  let srcH = vh;
-
-  if (videoAspect > canvasAspect) {
-    // video wider than target -> crop width
-    srcH = vh;
-    srcW = vh * canvasAspect;
-  } else {
-    // video taller than target -> crop height
-    srcW = vw;
-    srcH = vw / canvasAspect;
-  }
-
-  // Apply zoom by shrinking the source crop
-  const z = clamp(zoom, 1, 3);
-  const zoomedW = srcW / z;
-  const zoomedH = srcH / z;
-
-  // Center crop
-  const sx = (vw - zoomedW) / 2;
-  const sy = (vh - zoomedH) / 2;
-
-  ctx.clearRect(0, 0, canvasW, canvasH);
-  ctx.drawImage(video, sx, sy, zoomedW, zoomedH, 0, 0, canvasW, canvasH);
+      {/* Wordmark */}
+      <g transform="translate(145,28)">
+        <text
+          x="0"
+          y="72"
+          fontFamily="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial"
+          fontSize="78"
+          fontWeight="700"
+          fill="#ffffff"
+          letterSpacing="-1"
+        >
+          Flip
+        </text>
+        <text
+          x="140"
+          y="72"
+          fontFamily="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial"
+          fontSize="78"
+          fontWeight="700"
+          fill="#23c1a7"
+          letterSpacing="-1"
+        >
+          Cast
+        </text>
+        <text
+          x="310"
+          y="72"
+          fontFamily="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial"
+          fontSize="78"
+          fontWeight="600"
+          fill="#808184"
+          letterSpacing="-1"
+        >
+          Duo
+        </text>
+      </g>
+    </svg>
+  );
 }
 
 export default function Capture() {
-  // stage scaling
-  const [scale, setScale] = useState(1);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const scale = useScaleToFit(containerRef);
 
-  // mode
-  const [mode, setMode] = useState<"video" | "photo">("video");
+  const landVideoRef = useRef<HTMLVideoElement>(null);
+  const portVideoRef = useRef<HTMLVideoElement>(null);
 
-  // camera + status
-  const [cameraError, setCameraError] = useState<string | null>(null);
-  const [hasCamera, setHasCamera] = useState(false);
-
-  // zoom
-  const [landscapeZoom, setLandscapeZoom] = useState(1.0);
-  const [portraitZoom, setPortraitZoom] = useState(1.4);
-
-  // recording
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordSeconds, setRecordSeconds] = useState(0);
-
-  // refs
-  const previewVideoRef = useRef<HTMLVideoElement | null>(null); // single hidden "source" video from camera
   const streamRef = useRef<MediaStream | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<BlobPart[]>([]);
 
-  const landscapeCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const portraitCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [mode, setMode] = useState<"video" | "photo">("video");
+  const [audioEnabled, setAudioEnabled] = useState(false);
+  const [isReady, setIsReady] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
 
-  const landscapePreviewRef = useRef<HTMLVideoElement | null>(null); // visible preview
-  const portraitPreviewRef = useRef<HTMLVideoElement | null>(null); // visible preview
+  // simple zoom badges (UI only — you can wire to real zoom later)
+  const [zoomLand, setZoomLand] = useState(1.0);
+  const [zoomPort, setZoomPort] = useState(1.2);
 
-  const rafRef = useRef<number | null>(null);
+  const canUseMedia = typeof navigator !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
 
-  // recorders
-  const recLandscapeRef = useRef<MediaRecorder | null>(null);
-  const recPortraitRef = useRef<MediaRecorder | null>(null);
-  const chunksLandscapeRef = useRef<BlobPart[]>([]);
-  const chunksPortraitRef = useRef<BlobPart[]>([]);
-
-  const timerRef = useRef<number | null>(null);
-
-  // scale stage to viewport
-  useEffect(() => {
-    const calc = () => {
-      const pad = 24;
-      const vw = Math.max(320, window.innerWidth - pad * 2);
-      const vh = Math.max(320, window.innerHeight - pad * 2);
-      const s = Math.min(vw / BASE_W, vh / BASE_H);
-      setScale(clamp(s, 0.35, 1.25));
-    };
-    calc();
-    window.addEventListener("resize", calc);
-    return () => window.removeEventListener("resize", calc);
-  }, []);
-
-  const stageStyle = useMemo<React.CSSProperties>(
+  const constraints = useMemo<MediaStreamConstraints>(
     () => ({
-      width: BASE_W,
-      height: BASE_H,
-      transform: `scale(${scale})`,
-      transformOrigin: "top left",
+      video: {
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        frameRate: { ideal: 30, max: 60 },
+        facingMode: "user",
+      },
+      audio: audioEnabled,
     }),
-    [scale]
+    [audioEnabled]
   );
 
-  // start camera
-  useEffect(() => {
-    let cancelled = false;
+  async function stopStream() {
+    const s = streamRef.current;
+    streamRef.current = null;
+    if (s) s.getTracks().forEach((t) => t.stop());
+  }
 
-    async function start() {
-      try {
-        setCameraError(null);
+  async function startStream() {
+    if (!canUseMedia) return;
+    await stopStream();
 
-        // stop any existing
-        if (streamRef.current) {
-          streamRef.current.getTracks().forEach((t) => t.stop());
-          streamRef.current = null;
-        }
+    const s = await navigator.mediaDevices.getUserMedia(constraints);
+    streamRef.current = s;
 
-        // Camera constraints (reasonable defaults)
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: "user",
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-          },
-          audio: true,
-        });
-
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-
-        streamRef.current = stream;
-
-        const srcVid = previewVideoRef.current;
-        if (!srcVid) return;
-
-        srcVid.srcObject = stream;
-        await srcVid.play().catch(() => {});
-
-        setHasCamera(true);
-
-        // Attach the canvas previews to the visible video frames
-        // We will draw into canvases, and optionally pipe canvases into the preview videos.
-        const lc = landscapeCanvasRef.current;
-        const pc = portraitCanvasRef.current;
-        const lv = landscapePreviewRef.current;
-        const pv = portraitPreviewRef.current;
-
-        if (lc && lv) {
-          const s = lc.captureStream(30);
-          lv.srcObject = s;
-          await lv.play().catch(() => {});
-        }
-        if (pc && pv) {
-          const s = pc.captureStream(30);
-          pv.srcObject = s;
-          await pv.play().catch(() => {});
-        }
-
-        // Start draw loop
-        const draw = () => {
-          const v = previewVideoRef.current;
-          const lcan = landscapeCanvasRef.current;
-          const pcan = portraitCanvasRef.current;
-
-          if (v && lcan && pcan) {
-            const lctx = lcan.getContext("2d");
-            const pctx = pcan.getContext("2d");
-            if (lctx && pctx) {
-              // exact sizes of your frames
-              // Landscape frame is 1280×720
-              // Portrait frame is 405×720 (but for recording and quality, we’ll draw at 720×1280 internally)
-              // HOWEVER: your portrait frame is visually 405×720. If we draw exactly 405×720, the recording is low.
-              // So: keep canvas internal at 720×1280, then scale to fit preview via CSS (we do that below).
-              drawCroppedCover(lctx, v, 1280, 720, landscapeZoom);
-              drawCroppedCover(pctx, v, 720, 1280, portraitZoom);
-            }
-          }
-          rafRef.current = requestAnimationFrame(draw);
-        };
-
-        if (rafRef.current) cancelAnimationFrame(rafRef.current);
-        rafRef.current = requestAnimationFrame(draw);
-      } catch (err: any) {
-        console.error(err);
-        setHasCamera(false);
-        setCameraError(
-          err?.message ||
-            "Camera unavailable. Please allow camera/mic permissions and refresh."
-        );
-      }
+    // Attach to BOTH preview videos
+    if (landVideoRef.current) {
+      landVideoRef.current.srcObject = s;
+      // iOS/Safari friendliness
+      landVideoRef.current.muted = true;
+      landVideoRef.current.playsInline = true;
+      await landVideoRef.current.play().catch(() => {});
+    }
+    if (portVideoRef.current) {
+      portVideoRef.current.srcObject = s;
+      portVideoRef.current.muted = true;
+      portVideoRef.current.playsInline = true;
+      await portVideoRef.current.play().catch(() => {});
     }
 
-    start();
+    setIsReady(true);
+  }
 
+  useEffect(() => {
+    // Start camera on mount
+    startStream().catch(() => setIsReady(false));
+
+    // Cleanup
     return () => {
-      cancelled = true;
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-      if (timerRef.current) window.clearInterval(timerRef.current);
-      timerRef.current = null;
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
-      }
+      stopStream().catch(() => {});
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // wheel zoom helpers
-  const onWheelZoomLandscape = (e: React.WheelEvent) => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? -0.1 : 0.1;
-    setLandscapeZoom((z) => clamp(Number((z + delta).toFixed(1)), 1.0, 3.0));
-  };
-  const onWheelZoomPortrait = (e: React.WheelEvent) => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? -0.1 : 0.1;
-    setPortraitZoom((z) => clamp(Number((z + delta).toFixed(1)), 1.0, 3.0));
-  };
+  // Restart stream when mic toggles (because audio track changes)
+  useEffect(() => {
+    startStream().catch(() => setIsReady(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audioEnabled]);
 
-  const toggleZoomPresetLandscape = () => {
-    setLandscapeZoom((z) => {
-      if (z < 1.2) return 1.4;
-      if (z < 1.8) return 2.0;
-      return 1.0;
+  function startRecording() {
+    const s = streamRef.current;
+    if (!s) return;
+
+    // Use a "recordable" stream: if audio disabled, still record video-only
+    const recStream = audioEnabled ? s : new MediaStream(s.getVideoTracks());
+
+    chunksRef.current = [];
+    const mr = new MediaRecorder(recStream, {
+      mimeType: MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
+        ? "video/webm;codecs=vp9,opus"
+        : "video/webm",
     });
-  };
-  const toggleZoomPresetPortrait = () => {
-    setPortraitZoom((z) => {
-      if (z < 1.2) return 1.4;
-      if (z < 1.8) return 2.0;
-      return 1.0;
-    });
-  };
 
-  const startRecording = () => {
-    const lc = landscapeCanvasRef.current;
-    const pc = portraitCanvasRef.current;
-    if (!lc || !pc) return;
-
-    chunksLandscapeRef.current = [];
-    chunksPortraitRef.current = [];
-
-    const ls = lc.captureStream(30);
-    const ps = pc.captureStream(30);
-
-    // If you want audio in both files, we can add audio track from mic stream:
-    const audioTrack = streamRef.current?.getAudioTracks?.()?.[0];
-    if (audioTrack) {
-      try {
-        ls.addTrack(audioTrack);
-      } catch {}
-      try {
-        ps.addTrack(audioTrack);
-      } catch {}
-    }
-
-    const options: MediaRecorderOptions = {};
-    // Try to pick a good mime type
-    const candidates = [
-      "video/webm;codecs=vp9,opus",
-      "video/webm;codecs=vp8,opus",
-      "video/webm",
-    ];
-    for (const c of candidates) {
-      if ((window as any).MediaRecorder?.isTypeSupported?.(c)) {
-        options.mimeType = c;
-        break;
-      }
-    }
-
-    const recL = new MediaRecorder(ls, options);
-    const recP = new MediaRecorder(ps, options);
-
-    recL.ondataavailable = (ev) => {
-      if (ev.data && ev.data.size > 0) chunksLandscapeRef.current.push(ev.data);
-    };
-    recP.ondataavailable = (ev) => {
-      if (ev.data && ev.data.size > 0) chunksPortraitRef.current.push(ev.data);
+    mr.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
     };
 
-    recL.onstop = () => {
-      const blob = new Blob(chunksLandscapeRef.current, {
-        type: recL.mimeType || "video/webm",
-      });
-      downloadBlob(blob, `FlipCastDuo_Landscape_${Date.now()}.webm`);
-    };
-    recP.onstop = () => {
-      const blob = new Blob(chunksPortraitRef.current, {
-        type: recP.mimeType || "video/webm",
-      });
-      downloadBlob(blob, `FlipCastDuo_Portrait_${Date.now()}.webm`);
+    mr.onstop = () => {
+      const blob = new Blob(chunksRef.current, { type: "video/webm" });
+      downloadBlob(blob, `FlipCastDuo_${nowStamp()}_video.webm`);
+      chunksRef.current = [];
     };
 
-    recLandscapeRef.current = recL;
-    recPortraitRef.current = recP;
-
-    recL.start(250); // chunk every 250ms
-    recP.start(250);
-
+    mr.start(250);
+    recorderRef.current = mr;
     setIsRecording(true);
-    setRecordSeconds(0);
+  }
 
-    if (timerRef.current) window.clearInterval(timerRef.current);
-    timerRef.current = window.setInterval(() => {
-      setRecordSeconds((s) => s + 1);
-    }, 1000);
-  };
-
-  const stopRecording = () => {
-    recLandscapeRef.current?.stop();
-    recPortraitRef.current?.stop();
-    recLandscapeRef.current = null;
-    recPortraitRef.current = null;
-
+  function stopRecording() {
+    const mr = recorderRef.current;
+    if (!mr) return;
+    if (mr.state !== "inactive") mr.stop();
+    recorderRef.current = null;
     setIsRecording(false);
-    if (timerRef.current) window.clearInterval(timerRef.current);
-    timerRef.current = null;
-  };
+  }
 
-  const onRecord = () => {
-    if (mode !== "video") return;
-    if (!hasCamera) return;
-    if (!isRecording) startRecording();
-    else stopRecording();
-  };
+  async function takePhoto() {
+    const s = streamRef.current;
+    if (!s) return;
 
-  const capturePhotos = async () => {
-    const lc = landscapeCanvasRef.current;
-    const pc = portraitCanvasRef.current;
-    if (!lc || !pc) return;
+    // Grab from the landscape preview (same stream, so fine)
+    const v = landVideoRef.current;
+    if (!v) return;
 
-    // Landscape PNG
-    lc.toBlob((b) => {
-      if (b) downloadBlob(b, `FlipCastDuo_Landscape_${Date.now()}.png`);
-    }, "image/png");
+    // Create 2 canvases to simulate the two outputs:
+    // - Landscape: 16:9
+    // - Portrait: 9:16 (center-crop)
+    const landW = 1920;
+    const landH = 1080;
 
-    // Portrait PNG (we record at 720×1280 internally)
-    pc.toBlob((b) => {
-      if (b) downloadBlob(b, `FlipCastDuo_Portrait_${Date.now()}.png`);
-    }, "image/png");
-  };
+    const portW = 1080;
+    const portH = 1920;
 
-  const onCapture = () => {
-    if (!hasCamera) return;
-    if (mode === "photo") {
-      capturePhotos();
-    } else {
-      // In video mode "Capture" can be an alias for record toggle if you want:
-      onRecord();
+    const vw = v.videoWidth || landW;
+    const vh = v.videoHeight || landH;
+
+    // LAND: cover into 16:9
+    const c1 = document.createElement("canvas");
+    c1.width = landW;
+    c1.height = landH;
+    const g1 = c1.getContext("2d")!;
+    {
+      const targetAR = landW / landH;
+      const srcAR = vw / vh;
+      let sx = 0,
+        sy = 0,
+        sw = vw,
+        sh = vh;
+      if (srcAR > targetAR) {
+        // too wide -> crop sides
+        sh = vh;
+        sw = vh * targetAR;
+        sx = (vw - sw) / 2;
+      } else {
+        // too tall -> crop top/bottom
+        sw = vw;
+        sh = vw / targetAR;
+        sy = (vh - sh) / 2;
+      }
+      g1.drawImage(v, sx, sy, sw, sh, 0, 0, landW, landH);
     }
-  };
 
-  const onGallery = () => {
-    alert("Gallery (placeholder): wire this to your gallery view later.");
-  };
+    // PORT: cover into 9:16
+    const c2 = document.createElement("canvas");
+    c2.width = portW;
+    c2.height = portH;
+    const g2 = c2.getContext("2d")!;
+    {
+      const targetAR = portW / portH; // 9/16
+      const srcAR = vw / vh;
+      let sx = 0,
+        sy = 0,
+        sw = vw,
+        sh = vh;
+      if (srcAR > targetAR) {
+        // crop sides
+        sh = vh;
+        sw = vh * targetAR;
+        sx = (vw - sw) / 2;
+      } else {
+        // crop top/bottom
+        sw = vw;
+        sh = vw / targetAR;
+        sy = (vh - sh) / 2;
+      }
+      g2.drawImage(v, sx, sy, sw, sh, 0, 0, portW, portH);
+    }
 
-  const onAccessory = () => {
-    alert("Accessory (placeholder): wire this to your accessory pairing later.");
-  };
+    const b1: Blob = await new Promise((res) => c1.toBlob((b) => res(b as Blob), "image/png"));
+    const b2: Blob = await new Promise((res) => c2.toBlob((b) => res(b as Blob), "image/png"));
 
-  const onCloudSync = () => {
-    alert("Cloud Sync (placeholder): wire this to your sync logic later.");
-  };
+    downloadBlob(b1, `FlipCastDuo_${nowStamp()}_landscape.png`);
+    downloadBlob(b2, `FlipCastDuo_${nowStamp()}_portrait.png`);
+  }
 
-  const formatTime = (s: number) => {
-    const mm = Math.floor(s / 60)
-      .toString()
-      .padStart(2, "0");
-    const ss = Math.floor(s % 60)
-      .toString()
-      .padStart(2, "0");
-    return `${mm}:${ss}`;
+  function onMainAction() {
+    if (!isReady) return;
+
+    if (mode === "video") {
+      if (isRecording) stopRecording();
+      else startRecording();
+    } else {
+      // photo mode
+      takePhoto().catch(() => {});
+    }
+  }
+
+  // Visual styling tuned to match your dark UI + subtle lines
+  const styles = {
+    page: {
+      width: "100vw",
+      height: "100vh",
+      background: "radial-gradient(1200px 700px at 30% 20%, #0b1224 0%, #0b0f18 45%, #070a10 100%)",
+      overflow: "hidden" as const,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    container: {
+      width: "100%",
+      height: "100%",
+      padding: 16,
+      boxSizing: "border-box" as const,
+    },
+    stageWrap: {
+      width: "100%",
+      height: "100%",
+      position: "relative" as const,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    stage: {
+      width: STAGE_W,
+      height: STAGE_H,
+      position: "absolute" as const,
+      left: "50%",
+      top: "50%",
+      transform: `translate(-50%, -50%) scale(${scale})`,
+      transformOrigin: "top left",
+    },
+    frameBase: {
+      position: "absolute" as const,
+      overflow: "hidden" as const,
+      background: "#000",
+      boxShadow: "0 18px 50px rgba(0,0,0,0.45)",
+    },
+    frameBorder: {
+      position: "absolute" as const,
+      inset: 0,
+      borderRadius: 41,
+      pointerEvents: "none" as const,
+      border: "1.2px solid rgba(138,160,125,0.65)", // muted green/grey
+      boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.55)",
+    },
+    frameBorderPortrait: {
+      position: "absolute" as const,
+      inset: 0,
+      borderRadius: 41,
+      pointerEvents: "none" as const,
+      border: "1.2px solid rgba(119,112,210,0.8)", // subtle violet edge
+      boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.55)",
+    },
+    badge: {
+      position: "absolute" as const,
+      padding: "8px 14px",
+      borderRadius: 10,
+      fontSize: 16,
+      letterSpacing: 0.4,
+      color: "rgba(255,255,255,0.92)",
+      border: "1px solid rgba(120,135,125,0.55)",
+      background: "rgba(0,0,0,0.28)",
+      backdropFilter: "blur(6px)",
+      WebkitBackdropFilter: "blur(6px)",
+      userSelect: "none" as const,
+    },
+    pill: {
+      height: 54,
+      borderRadius: 27,
+      border: "1.2px solid rgba(130,150,140,0.55)",
+      background: "rgba(0,0,0,0.18)",
+      backdropFilter: "blur(8px)",
+      WebkitBackdropFilter: "blur(8px)",
+      color: "rgba(255,255,255,0.92)",
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 10,
+      padding: "0 18px",
+      fontSize: 15,
+      letterSpacing: 1.2,
+      textTransform: "uppercase" as const,
+      cursor: "pointer",
+      userSelect: "none" as const,
+    },
+    pillDisabled: {
+      opacity: 0.6,
+      cursor: "default",
+    },
   };
 
   return (
-    <div className="min-h-[100dvh] bg-[#0b0f18] flex items-center justify-center p-6">
-      {/* hidden source video */}
-      <video
-        ref={previewVideoRef}
-        playsInline
-        muted
-        autoPlay
-        style={{ position: "absolute", width: 1, height: 1, opacity: 0 }}
-      />
-
-      {/* internal canvases (used for previews + recording) */}
-      <canvas
-        ref={landscapeCanvasRef}
-        width={1280}
-        height={720}
-        style={{ position: "absolute", width: 1, height: 1, opacity: 0 }}
-      />
-      <canvas
-        ref={portraitCanvasRef}
-        width={720}
-        height={1280}
-        style={{ position: "absolute", width: 1, height: 1, opacity: 0 }}
-      />
-
-      {/* Stage wrapper */}
-      <div
-        className="relative"
-        style={{
-          width: BASE_W * scale,
-          height: BASE_H * scale,
-        }}
-      >
-        <div className="relative" style={stageStyle}>
-          <div className="absolute inset-0 bg-[#0b0f18]" />
-
-          {/* CLOUD SYNC */}
-          <button
-            onClick={onCloudSync}
-            className="absolute right-[92px] top-[28px] h-[42px] px-6 rounded-full border border-[#667268] bg-white/10 text-white text-[15px] tracking-wide flex items-center gap-3"
-            style={{ backdropFilter: "blur(8px)" }}
-          >
-            <span className="inline-block w-5 h-5">
-              <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5">
-                <path
-                  d="M7.5 18.5h10a4 4 0 0 0 .6-7.96A5.5 5.5 0 0 0 7.3 8.7 4.3 4.3 0 0 0 7.5 18.5Z"
-                  stroke="white"
-                  strokeWidth="1.6"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </span>
-            CLOUD SYNC
-          </button>
-
-          {/* LANDSCAPE FRAME */}
-          <div
-            className="absolute left-[99px] top-[96px] rounded-[41px] border border-[#667268] overflow-hidden bg-black"
-            style={{ width: 1280, height: 720 }}
-            onWheel={onWheelZoomLandscape}
-            onDoubleClick={toggleZoomPresetLandscape}
-          >
-            {/* Preview is the landscape canvas stream */}
-            <video
-              ref={landscapePreviewRef}
-              className="w-full h-full object-cover"
-              playsInline
-              muted
-              autoPlay
-            />
-
-            {/* overlays */}
-            <div className="absolute left-[28px] bottom-[26px] px-4 py-2 rounded-md border border-[#667268] bg-black/40 text-white text-[14px] tracking-wide">
-              16:9&nbsp; LANDSCAPE
-            </div>
-
-            <button
-              type="button"
-              onClick={() =>
-                setLandscapeZoom((z) => clamp(Number((z + 0.1).toFixed(1)), 1, 3))
-              }
-              className="absolute right-[28px] bottom-[26px] px-4 py-2 rounded-full border border-[#667268] bg-black/40 text-white text-[14px]"
-              title="Click to zoom in. Wheel also works."
-            >
-              {landscapeZoom.toFixed(1)}x
-            </button>
-
-            {!hasCamera && (
-              <div className="absolute inset-0 flex items-center justify-center text-white/70 text-[16px]">
-                Camera unavailable
-              </div>
-            )}
-          </div>
-
-          {/* PORTRAIT FRAME */}
-          <div
-            className="absolute left-[1428px] top-[94px] rounded-[41px] border border-[#667268] overflow-hidden bg-black"
-            style={{ width: 405, height: 720 }}
-            onWheel={onWheelZoomPortrait}
-            onDoubleClick={toggleZoomPresetPortrait}
-          >
-            {/* We stream a 720×1280 canvas into this video,
-                then "cover" it into a 405×720 window */}
-            <video
-              ref={portraitPreviewRef}
-              className="w-full h-full object-cover"
-              playsInline
-              muted
-              autoPlay
-            />
-
-            <button
-              type="button"
-              onClick={() =>
-                setPortraitZoom((z) => clamp(Number((z + 0.1).toFixed(1)), 1, 3))
-              }
-              className="absolute left-[22px] top-[22px] px-4 py-2 rounded-full border border-[#667268] bg-black/40 text-white text-[14px]"
-              title="Click to zoom in. Wheel also works."
-            >
-              {portraitZoom.toFixed(1)}x
-            </button>
-
-            <div className="absolute right-[22px] bottom-[26px] px-4 py-2 rounded-md border border-[#667268] bg-black/40 text-white text-[14px] tracking-wide">
-              9:16&nbsp; PORTRAIT
-            </div>
-
-            {!hasCamera && (
-              <div className="absolute inset-0 flex items-center justify-center text-white/70 text-[16px]">
-                Camera unavailable
-              </div>
-            )}
-          </div>
-
-          {/* LOGO */}
-          <div className="absolute left-[92px] top-[860px]">
-            <FlipCastLogo height={72} />
-          </div>
-
-          {/* LEFT BUTTONS */}
-          <div className="absolute left-[86px] top-[972px] flex gap-5">
-            <button
-              onClick={onCapture}
-              className="h-[56px] px-8 rounded-full border border-[#667268] bg-black/10 text-white text-[15px] tracking-wide"
-              style={{ backdropFilter: "blur(10px)" }}
-            >
-              CAPTURE
-            </button>
-
-            <button
-              onClick={onGallery}
-              className="h-[56px] px-8 rounded-full border border-[#667268] bg-black/10 text-white/80 text-[15px] tracking-wide"
-              style={{ backdropFilter: "blur(10px)" }}
-            >
-              GALLERY
-            </button>
-
-            <button
-              onClick={onAccessory}
-              className="h-[56px] px-8 rounded-full border border-[#667268] bg-black/10 text-white/80 text-[15px] tracking-wide"
-              style={{ backdropFilter: "blur(10px)" }}
-            >
-              ACCESSORY
-            </button>
-          </div>
-
-          {/* MIC BUTTON (placeholder) */}
-          <button
-            className="absolute left-[810px] top-[855px] w-[82px] h-[82px] rounded-full border border-[#667268] bg-black/10 flex items-center justify-center"
-            style={{ backdropFilter: "blur(10px)" }}
-            onClick={() => alert("Mic button (placeholder)")}
-            aria-label="Microphone"
-          >
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M12 14a3 3 0 0 0 3-3V7a3 3 0 0 0-6 0v4a3 3 0 0 0 3 3Z"
-                stroke="white"
-                strokeWidth="1.8"
-              />
-              <path
-                d="M7 11v1a5 5 0 0 0 10 0v-1"
-                stroke="white"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-              />
-              <path
-                d="M12 17v3"
-                stroke="white"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
-
-          {/* VIDEO/PHOTO TOGGLE */}
-          <div
-            className="absolute left-[922px] top-[855px] h-[82px] w-[455px] rounded-full border border-[#667268] bg-black/10 flex items-center justify-center gap-4 px-5"
-            style={{ backdropFilter: "blur(10px)" }}
-          >
-            <button
-              onClick={() => setMode("video")}
-              className={`h-[58px] w-[210px] rounded-full flex items-center justify-center gap-3 text-[15px] tracking-wide ${
-                mode === "video" ? "bg-white text-black" : "text-white/80"
-              }`}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M15 10l5-3v10l-5-3v-4Z"
-                  stroke={mode === "video" ? "black" : "white"}
-                  strokeWidth="1.8"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="M4 7h11v10H4V7Z"
-                  stroke={mode === "video" ? "black" : "white"}
-                  strokeWidth="1.8"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              VIDEO
-            </button>
-
-            <button
-              onClick={() => setMode("photo")}
-              className={`h-[58px] w-[210px] rounded-full flex items-center justify-center gap-3 text-[15px] tracking-wide ${
-                mode === "photo" ? "bg-white text-black" : "text-white/80"
-              }`}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M4 8h16v11H4V8Z"
-                  stroke={mode === "photo" ? "black" : "white"}
-                  strokeWidth="1.8"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="M9 8l1-2h4l1 2"
-                  stroke={mode === "photo" ? "black" : "white"}
-                  strokeWidth="1.8"
-                  strokeLinejoin="round"
-                />
-                <circle
-                  cx="12"
-                  cy="13"
-                  r="2.5"
-                  stroke={mode === "photo" ? "black" : "white"}
-                  strokeWidth="1.8"
-                />
-              </svg>
-              PHOTO
-            </button>
-          </div>
-
-          {/* RECORD BUTTON */}
-          <button
-            onClick={onRecord}
-            aria-label="Record"
-            className="absolute left-[1546px] top-[845px] w-[167px] h-[167px] rounded-full border-[9px] border-white/90 bg-transparent flex items-center justify-center"
-            title={mode === "photo" ? "Switch to VIDEO to record" : "Record"}
-          >
+    <div style={styles.page}>
+      <div ref={containerRef} style={styles.container}>
+        <div style={styles.stageWrap}>
+          <div style={styles.stage}>
+            {/* LANDSCAPE PREVIEW */}
             <div
-              className={`w-[143px] h-[143px] rounded-full ${
-                isRecording ? "bg-[#ea1d32]" : "bg-[#ea1d32]"
-              }`}
-            />
-            {isRecording && (
-              <div className="absolute -top-10 left-1/2 -translate-x-1/2 text-white text-[14px] px-3 py-1 rounded-full border border-[#667268] bg-black/40">
-                {formatTime(recordSeconds)}
+              style={{
+                ...styles.frameBase,
+                left: LAND.x,
+                top: LAND.y,
+                width: LAND.w,
+                height: LAND.h,
+                borderRadius: LAND.r,
+              }}
+            >
+              <video
+                ref={landVideoRef}
+                autoPlay
+                playsInline
+                muted
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  transform: `scale(${zoomLand})`,
+                  transformOrigin: "center",
+                  display: "block",
+                }}
+              />
+              <div style={styles.frameBorder} />
+              <div style={{ ...styles.badge, left: 28, bottom: 26, borderRadius: 10 }}>
+                <span style={{ opacity: 0.9, marginRight: 10 }}>16:9</span>
+                <span style={{ fontWeight: 600, opacity: 0.95 }}>LANDSCAPE</span>
               </div>
-            )}
-          </button>
-
-          {/* Error overlay (if camera blocked) */}
-          {cameraError && (
-            <div className="absolute left-[99px] top-[96px] w-[1734px] h-[720px] flex items-center justify-center">
-              <div className="max-w-[900px] text-center text-white/85 border border-[#667268] bg-black/60 rounded-2xl px-8 py-6">
-                <div className="text-[18px] mb-2">Camera unavailable</div>
-                <div className="text-[14px] text-white/70">
-                  {cameraError}
-                  <br />
-                  If you’re on Vercel: use HTTPS (not HTTP) and allow camera/mic
-                  permissions in the browser.
-                </div>
+              <div style={{ ...styles.badge, right: 26, bottom: 26, borderRadius: 30 }}>
+                {zoomLand.toFixed(1)}x
               </div>
             </div>
-          )}
+
+            {/* PORTRAIT PREVIEW */}
+            <div
+              style={{
+                ...styles.frameBase,
+                left: PORT.x,
+                top: PORT.y,
+                width: PORT.w,
+                height: PORT.h,
+                borderRadius: PORT.r,
+              }}
+            >
+              <video
+                ref={portVideoRef}
+                autoPlay
+                playsInline
+                muted
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  transform: `scale(${zoomPort})`,
+                  transformOrigin: "center",
+                  display: "block",
+                }}
+              />
+              <div style={styles.frameBorderPortrait} />
+              <div style={{ ...styles.badge, right: 26, bottom: 26, borderRadius: 10 }}>
+                <span style={{ opacity: 0.95, fontWeight: 600 }}>9:16</span>
+                <span style={{ marginLeft: 10, opacity: 0.9 }}>PORTRAIT</span>
+              </div>
+              <div style={{ ...styles.badge, left: 26, top: 26, borderRadius: 30 }}>
+                {zoomPort.toFixed(1)}x
+              </div>
+            </div>
+
+            {/* CLOUD SYNC (no alerts — safe click, does nothing for now) */}
+            <button
+              type="button"
+              onClick={() => {
+                // No placeholder popups — keep silent for investor demo
+              }}
+              style={{
+                position: "absolute",
+                left: CLOUD.x,
+                top: CLOUD.y,
+                width: CLOUD.w,
+                height: CLOUD.h,
+                borderRadius: CLOUD.r,
+                border: "1.2px solid rgba(150,165,160,0.6)",
+                background: "rgba(0,0,0,0.18)",
+                backdropFilter: "blur(10px)",
+                WebkitBackdropFilter: "blur(10px)",
+                color: "rgba(255,255,255,0.92)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 10,
+                fontSize: 14,
+                letterSpacing: 1.2,
+                textTransform: "uppercase",
+                cursor: "pointer",
+              }}
+            >
+              <span style={{ display: "inline-flex" }}>
+                <IconCloud size={18} />
+              </span>
+              CLOUD SYNC
+            </button>
+
+            {/* LOGO (bigger, includes missing first part/icon) */}
+            <div
+              style={{
+                position: "absolute",
+                left: LOGO.x,
+                top: LOGO.y,
+                width: LOGO.w,
+                height: LOGO.h,
+                display: "flex",
+                alignItems: "center",
+              }}
+            >
+              <FlipCastDuoLogo width={520} />
+            </div>
+
+            {/* LEFT BOTTOM NAV BUTTONS (CAPTURE is current page, does NOT record) */}
+            <div style={{ position: "absolute", left: LEFT_BTNS.x1, top: LEFT_BTNS.y, display: "flex", gap: LEFT_BTNS.gap }}>
+              <button
+                type="button"
+                onClick={() => {
+                  // current page — do nothing
+                }}
+                style={{
+                  ...styles.pill,
+                  width: LEFT_BTNS.w,
+                  outline: "none",
+                }}
+              >
+                CAPTURE
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  // keep silent (no alerts)
+                  // If you later add routing, you can navigate here
+                }}
+                style={{
+                  ...styles.pill,
+                  width: LEFT_BTNS.w,
+                }}
+              >
+                GALLERY
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  // keep silent (no alerts)
+                }}
+                style={{
+                  ...styles.pill,
+                  width: LEFT_BTNS.w,
+                }}
+              >
+                ACCESSORY
+              </button>
+            </div>
+
+            {/* MIC BUTTON — real toggle (restarts stream with/without audio) */}
+            <button
+              type="button"
+              onClick={() => setAudioEnabled((v) => !v)}
+              style={{
+                position: "absolute",
+                left: MIC.cx - MIC.r,
+                top: MIC.cy - MIC.r,
+                width: MIC.r * 2,
+                height: MIC.r * 2,
+                borderRadius: "50%",
+                border: "1.2px solid rgba(150,165,160,0.6)",
+                background: audioEnabled ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.18)",
+                backdropFilter: "blur(10px)",
+                WebkitBackdropFilter: "blur(10px)",
+                color: "rgba(255,255,255,0.92)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+              }}
+              aria-label="Toggle microphone"
+              title={audioEnabled ? "Mic on" : "Mic off"}
+            >
+              <IconMic size={20} />
+            </button>
+
+            {/* VIDEO / PHOTO MODE SWITCH */}
+            <div
+              style={{
+                position: "absolute",
+                left: MODE.x,
+                top: MODE.y,
+                width: MODE.w,
+                height: MODE.h,
+                borderRadius: MODE.r,
+                border: "1.2px solid rgba(150,165,160,0.6)",
+                background: "rgba(0,0,0,0.18)",
+                backdropFilter: "blur(10px)",
+                WebkitBackdropFilter: "blur(10px)",
+                display: "flex",
+                alignItems: "center",
+                padding: 8,
+                gap: 10,
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setMode("video")}
+                style={{
+                  width: MODE_VIDEO.w,
+                  height: MODE_VIDEO.h,
+                  borderRadius: MODE_VIDEO.r,
+                  border: "1px solid rgba(0,0,0,0.0)",
+                  background: mode === "video" ? "rgba(255,255,255,0.95)" : "rgba(0,0,0,0.0)",
+                  color: mode === "video" ? "rgba(0,0,0,0.95)" : "rgba(255,255,255,0.75)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 10,
+                  fontSize: 15,
+                  letterSpacing: 1.2,
+                  textTransform: "uppercase",
+                  cursor: "pointer",
+                }}
+              >
+                <IconVideo size={18} />
+                VIDEO
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (isRecording) stopRecording();
+                  setMode("photo");
+                }}
+                style={{
+                  width: MODE_PHOTO.w,
+                  height: MODE_PHOTO.h,
+                  borderRadius: MODE_PHOTO.r,
+                  border: "1px solid rgba(0,0,0,0.0)",
+                  background: mode === "photo" ? "rgba(255,255,255,0.95)" : "rgba(0,0,0,0.0)",
+                  color: mode === "photo" ? "rgba(0,0,0,0.95)" : "rgba(255,255,255,0.75)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 10,
+                  fontSize: 15,
+                  letterSpacing: 1.2,
+                  textTransform: "uppercase",
+                  cursor: "pointer",
+                }}
+              >
+                <IconCamera size={18} />
+                PHOTO
+              </button>
+            </div>
+
+            {/* RECORD / SHUTTER BUTTON (the ONLY capture action) */}
+            <button
+              type="button"
+              onClick={onMainAction}
+              disabled={!isReady}
+              style={{
+                position: "absolute",
+                left: REC.cx - REC.rOuter,
+                top: REC.cy - REC.rOuter,
+                width: REC.rOuter * 2,
+                height: REC.rOuter * 2,
+                borderRadius: "50%",
+                border: "6px solid rgba(255,255,255,0.85)",
+                background: "rgba(0,0,0,0.0)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: isReady ? "pointer" : "default",
+                opacity: isReady ? 1 : 0.6,
+              }}
+              aria-label={mode === "video" ? (isRecording ? "Stop recording" : "Start recording") : "Take photo"}
+              title={
+                !isReady
+                  ? "Camera not ready"
+                  : mode === "video"
+                  ? isRecording
+                    ? "Stop recording"
+                    : "Start recording"
+                  : "Take photo"
+              }
+            >
+              <div
+                style={{
+                  width: REC.rInner * 2,
+                  height: REC.rInner * 2,
+                  borderRadius: isRecording && mode === "video" ? 18 : "50%",
+                  background: "rgba(234,29,50,0.95)",
+                  boxShadow: "0 10px 30px rgba(0,0,0,0.45)",
+                  transition: "border-radius 120ms ease",
+                }}
+              />
+            </button>
+
+            {/* Small: if camera fails, show a subtle hint (no popups) */}
+            {!isReady && (
+              <div
+                style={{
+                  position: "absolute",
+                  left: LAND.x + 24,
+                  top: LAND.y + 24,
+                  padding: "10px 14px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.18)",
+                  background: "rgba(0,0,0,0.35)",
+                  color: "rgba(255,255,255,0.85)",
+                  fontSize: 14,
+                  maxWidth: 520,
+                  lineHeight: 1.35,
+                }}
+              >
+                Camera preview not ready. If you’re on macOS, check:{" "}
+                <span style={{ opacity: 0.9 }}>System Settings → Privacy & Security → Camera</span>.
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
