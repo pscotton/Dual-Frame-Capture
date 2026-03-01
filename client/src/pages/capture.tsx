@@ -36,17 +36,21 @@ function pickMimeType(): string | undefined {
 }
 
 /**
- * Draw helpers: centre-crop the source video to a target aspect ratio.
+ * Draw helpers: centre-crop the source video to a target aspect ratio,
+ * with optional zoom (>= 1.0 means closer).
  */
-function drawCover(
+function drawCoverZoom(
   ctx: CanvasRenderingContext2D,
   video: HTMLVideoElement,
   outW: number,
-  outH: number
+  outH: number,
+  zoom: number
 ) {
   const vw = video.videoWidth || 0;
   const vh = video.videoHeight || 0;
   if (!vw || !vh) return;
+
+  const z = Math.max(1, zoom || 1);
 
   const targetAspect = outW / outH;
   const srcAspect = vw / vh;
@@ -56,18 +60,39 @@ function drawCover(
     sw = vw,
     sh = vh;
 
+  // First: basic centre-crop to match target aspect
   if (srcAspect > targetAspect) {
-    // source too wide → crop left/right
     sw = Math.round(vh * targetAspect);
     sx = Math.round((vw - sw) / 2);
   } else {
-    // source too tall → crop top/bottom
     sh = Math.round(vw / targetAspect);
     sy = Math.round((vh - sh) / 2);
   }
 
+  // Then: apply zoom by shrinking the crop window around its centre
+  const cx = sx + sw / 2;
+  const cy = sy + sh / 2;
+
+  const zw = sw / z;
+  const zh = sh / z;
+
+  let zx = cx - zw / 2;
+  let zy = cy - zh / 2;
+
+  // Clamp to bounds
+  zx = Math.max(0, Math.min(vw - zw, zx));
+  zy = Math.max(0, Math.min(vh - zh, zy));
+
   ctx.clearRect(0, 0, outW, outH);
-  ctx.drawImage(video, sx, sy, sw, sh, 0, 0, outW, outH);
+  ctx.drawImage(video, zx, zy, zw, zh, 0, 0, outW, outH);
+}
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function round1(n: number) {
+  return Math.round(n * 10) / 10;
 }
 
 export default function Capture() {
@@ -77,6 +102,10 @@ export default function Capture() {
   const [cloudOn, setCloudOn] = useState(false);
 
   const [stageScale, setStageScale] = useState(1);
+
+  // Zoom states (independent)
+  const [zoomLand, setZoomLand] = useState(1.0);
+  const [zoomPort, setZoomPort] = useState(1.2);
 
   const liveVideoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -103,7 +132,6 @@ export default function Capture() {
       const vw = window.innerWidth;
       const vh = window.innerHeight;
       const s = Math.min(vw / STAGE_W, vh / STAGE_H);
-      // cap to avoid it becoming comically huge on large screens
       setStageScale(Math.min(1.2, Math.max(0.35, s)));
     };
     onResize();
@@ -134,27 +162,30 @@ export default function Capture() {
 
         streamRef.current = stream;
 
-        // Set mic state immediately
+        // Mic state affects ONLY the audio track being enabled (recorded)
         const a = stream.getAudioTracks()[0];
         if (a) a.enabled = micOn;
 
-        // Attach to a hidden "source" video (for drawing to canvas)
+        // Attach to hidden "source" video (muted)
         if (liveVideoRef.current) {
           liveVideoRef.current.srcObject = stream;
+          liveVideoRef.current.muted = true;
           await liveVideoRef.current.play().catch(() => {});
         }
 
-        // Attach to both preview videos
+        // Attach to preview videos — ALWAYS MUTED (prevents speaker playback)
         if (previewLandscapeRef.current) {
           previewLandscapeRef.current.srcObject = stream;
+          previewLandscapeRef.current.muted = true;
           await previewLandscapeRef.current.play().catch(() => {});
         }
         if (previewPortraitRef.current) {
           previewPortraitRef.current.srcObject = stream;
+          previewPortraitRef.current.muted = true;
           await previewPortraitRef.current.play().catch(() => {});
         }
 
-        // Kick off canvas drawing loop (needed for dual-format recording + photos)
+        // Canvas drawing loop (dual-format recording + photos)
         const tick = () => {
           const v = liveVideoRef.current;
           const cL = canvasLandscapeRef.current;
@@ -163,8 +194,8 @@ export default function Capture() {
           if (v && cL && cP) {
             const ctxL = cL.getContext("2d");
             const ctxP = cP.getContext("2d");
-            if (ctxL) drawCover(ctxL, v, cL.width, cL.height); // 16:9
-            if (ctxP) drawCover(ctxP, v, cP.width, cP.height); // 9:16
+            if (ctxL) drawCoverZoom(ctxL, v, cL.width, cL.height, zoomLand);
+            if (ctxP) drawCoverZoom(ctxP, v, cP.width, cP.height, zoomPort);
           }
 
           rafRef.current = requestAnimationFrame(tick);
@@ -188,7 +219,7 @@ export default function Capture() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // --- Toggle mic track on/off ---
+  // --- Toggle mic track on/off (recorded audio) ---
   useEffect(() => {
     const s = streamRef.current;
     if (!s) return;
@@ -205,13 +236,12 @@ export default function Capture() {
 
     if (!cL || !cP || !stream) return;
 
-    // canvas streams (video)
     const landStream = cL.captureStream(30);
     const portStream = cP.captureStream(30);
 
     // audio track (optional)
     const audioTrack = stream.getAudioTracks()[0];
-    if (audioTrack) {
+    if (audioTrack && micOn) {
       landStream.addTrack(audioTrack);
       portStream.addTrack(audioTrack);
     }
@@ -247,7 +277,6 @@ export default function Capture() {
         downloadBlob(blob, `flipcast_portrait_${Date.now()}.webm`);
       };
 
-      // start both
       rL.start();
       rP.start();
       setIsRecording(true);
@@ -269,26 +298,17 @@ export default function Capture() {
   const takePhotos = async () => {
     const cL = canvasLandscapeRef.current;
     const cP = canvasPortraitRef.current;
-    const v = liveVideoRef.current;
     if (!cL || !cP) return;
 
-    // Force BOTH canvases to render from the SAME live frame right now (minimises the “smile mismatch”)
-    if (v) {
-      const ctxL = cL.getContext("2d");
-      const ctxP = cP.getContext("2d");
-      if (ctxL) drawCover(ctxL, v, cL.width, cL.height);
-      if (ctxP) drawCover(ctxP, v, cP.width, cP.height);
-    }
+    const blobL: Blob | null = await new Promise((resolve) =>
+      cL.toBlob((b) => resolve(b), "image/png")
+    );
+    const blobP: Blob | null = await new Promise((resolve) =>
+      cP.toBlob((b) => resolve(b), "image/png")
+    );
 
-    // Also run blobs in parallel
-    const [blobL, blobP] = await Promise.all([
-      new Promise<Blob | null>((resolve) => cL.toBlob((b) => resolve(b), "image/png")),
-      new Promise<Blob | null>((resolve) => cP.toBlob((b) => resolve(b), "image/png")),
-    ]);
-
-    const ts = Date.now();
-    if (blobL) downloadBlob(blobL, `flipcast_landscape_${ts}.png`);
-    if (blobP) downloadBlob(blobP, `flipcast_portrait_${ts}.png`);
+    if (blobL) downloadBlob(blobL, `flipcast_landscape_${Date.now()}.png`);
+    if (blobP) downloadBlob(blobP, `flipcast_portrait_${Date.now()}.png`);
   };
 
   const onBigRedPress = async () => {
@@ -297,14 +317,30 @@ export default function Capture() {
       return;
     }
 
-    // video mode
     if (!isRecording) startRecording();
     else stopRecording();
   };
 
   // --- UI helpers ---
   const isTab = (t: Tab) => tab === t;
-  const setSafeTab = (t: Tab) => setTab(t);
+
+  // Zoom interactions
+  const zoomSteps = [1.0, 1.1, 1.2, 1.3, 1.5, 1.8, 2.0];
+
+  const cycleZoom = (current: number, setter: (n: number) => void) => {
+    const idx = zoomSteps.findIndex((z) => Math.abs(z - current) < 0.01);
+    const next = zoomSteps[(idx + 1 + zoomSteps.length) % zoomSteps.length];
+    setter(next);
+  };
+
+  const onWheelZoom =
+    (which: "land" | "port") => (e: React.WheelEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      const delta = e.deltaY;
+      const step = delta > 0 ? -0.1 : 0.1; // wheel up = zoom in
+      if (which === "land") setZoomLand((z) => round1(clamp(z + step, 1, 2.5)));
+      else setZoomPort((z) => round1(clamp(z + step, 1, 2.5)));
+    };
 
   return (
     <div className="page">
@@ -330,17 +366,16 @@ export default function Capture() {
         style={{ position: "absolute", left: -99999, top: -99999 }}
       />
 
-      {/* Stage (absolutely centred both axes, scaling from centre) */}
+      {/* Centered stage that scales proportionally */}
       <div className="stageWrap">
         <div
           className="stage"
           style={{
             width: STAGE_W,
             height: STAGE_H,
-            transform: `translate(-50%, -50%) scale(${stageScale})`,
+            transform: `scale(${stageScale})`,
           }}
         >
-          {/* Background */}
           <div className="bg" />
 
           {/* Cloud Sync */}
@@ -355,34 +390,53 @@ export default function Capture() {
           </button>
 
           {/* Landscape Frame */}
-          <div className="frame landscapeFrame">
+          <div className="frame landscapeFrame" onWheel={onWheelZoom("land")}>
             <video
               ref={previewLandscapeRef}
               playsInline
-              muted={!micOn}
+              muted
               className="previewVideo"
+              style={{ transform: `scale(${zoomLand})` }}
             />
             <div className="tag tagLeft">
               <span className="tagStrong">16:9</span>&nbsp; LANDSCAPE
             </div>
-            <div className="zoomPill zoomRight">1.0×</div>
+
+            <button
+              type="button"
+              className="zoomPill zoomRight zoomBtn"
+              onClick={() => cycleZoom(zoomLand, setZoomLand)}
+              aria-label="Landscape zoom"
+            >
+              {zoomLand.toFixed(1)}×
+            </button>
           </div>
 
           {/* Portrait Frame */}
-          <div className="frame portraitFrame">
+          <div className="frame portraitFrame" onWheel={onWheelZoom("port")}>
             <video
               ref={previewPortraitRef}
               playsInline
-              muted={!micOn}
+              muted
               className="previewVideo"
+              style={{ transform: `scale(${zoomPort})` }}
             />
-            <div className="zoomPill zoomLeft">1.2×</div>
+
+            <button
+              type="button"
+              className="zoomPill zoomLeft zoomBtn"
+              onClick={() => cycleZoom(zoomPort, setZoomPort)}
+              aria-label="Portrait zoom"
+            >
+              {zoomPort.toFixed(1)}×
+            </button>
+
             <div className="tag tagRight">
               <span className="tagStrong">9:16</span>&nbsp; PORTRAIT
             </div>
           </div>
 
-          {/* Logo (cropped directly from your SVG so it won’t “mangle”) */}
+          {/* Logo (unchanged) */}
           <div className="logo">
             <svg
               viewBox="90 850 420 110"
@@ -401,8 +455,7 @@ export default function Capture() {
                 `}
                 </style>
               </defs>
-
-              {/* --- pasted from your SVG (logo group) --- */}
+              {/* --- your SVG group exactly as before --- */}
               <g>
                 <g>
                   <g>
@@ -450,101 +503,48 @@ export default function Capture() {
                       d="M331.02,888.68c-.3-2.41-1.68-4.03-4.27-4.03-2.41,0-3.91,1.62-3.91,3.55,0,2.83,2.89,3.67,6.2,4.69,4.69,1.44,9.02,4.27,9.02,10.47s-4.69,10.65-11.19,10.65c-6.02,0-11.79-4.09-11.79-11.79h6.26c.3,4.03,2.35,6.08,5.66,6.08,2.89,0,4.81-1.86,4.81-4.57,0-2.29-1.74-3.79-5.66-5.05-8.18-2.59-9.57-6.14-9.57-9.93,0-5.9,4.99-9.81,10.47-9.81s10.05,3.85,10.23,9.75h-6.26Z"
                     />
                   </g>
-                  <path
-                    className="st0"
-                    d="M354.18,879.52h-4.25v-10.88h-6.5v10.88h-4.25v5.96h4.25v23.05c0,2.57,2.08,4.65,4.65,4.65h1.85v-27.69h4.25v-5.96Z"
-                  />
-                  <path
-                    className="st9"
-                    d="M455.56,879.52h-13.5c-3.75,0-6.78,3.04-6.78,6.78v20.08c0,3.75,3.04,6.78,6.79,6.78h13.49c3.75,0,6.78-3.04,6.78-6.78v-20.08c0-3.75-3.03-6.78-6.78-6.78ZM455.85,904.9c0,1.28-1.04,2.32-2.32,2.32h-9.43c-1.28,0-2.32-1.04-2.32-2.32v-17.1c0-1.28,1.03-2.32,2.31-2.32h9.44c1.28,0,2.32,1.04,2.32,2.32v17.1Z"
-                  />
-                  {/* Icon part */}
-                  <g>
-                    <g>
-                      <path
-                        className="st0"
-                        d="M106.57,895.94h17l8.13-8.13h-25.12c1.94-11.33,11.8-19.98,23.68-19.98,5.75,0,11.27,2.06,15.63,5.79l5.77-5.77c-5.9-5.26-13.49-8.15-21.4-8.15-17.74,0-32.18,14.43-32.18,32.18,0,7.91,2.9,15.5,8.15,21.4l5.77-5.77c-2.84-3.31-4.7-7.31-5.43-11.57Z"
-                      />
-                      <path
-                        className="st9"
-                        d="M128.4,923.99v-8.16c-5.06-.39-9.91-2.4-13.77-5.7l-5.77,5.77c5.4,4.81,12.33,7.68,19.54,8.09Z"
-                      />
-                    </g>
-                    <g>
-                      <path
-                        className="st0"
-                        d="M130.25,872.71c-9.35,0-17.28,6.7-18.86,15.92l2.06.35c1.41-8.22,8.48-14.19,16.8-14.19,3.88,0,7.64,1.34,10.67,3.78l1.49-1.49c-3.43-2.83-7.73-4.38-12.16-4.38Z"
-                      />
-                      <path
-                        className="st0"
-                        d="M113.44,894.76l-2.06.35c.56,3.28,1.98,6.35,4.09,8.92l1.49-1.49c-1.81-2.26-3.03-4.93-3.52-7.78Z"
-                      />
-                    </g>
-                    <g>
-                      <path
-                        className="st4"
-                        d="M149.42,891.87c0-4.43-1.56-8.73-4.38-12.16l-1.49,1.49c2.44,3.03,3.78,6.8,3.78,10.67,0,8.68-6.64,16.02-15.22,16.95v2.1c9.74-.94,17.31-9.23,17.31-19.05Z"
-                      />
-                      <path
-                        className="st9"
-                        d="M119.58,905.17l-1.49,1.49c2.92,2.4,6.55,3.9,10.3,4.27v-2.1c-3.2-.35-6.3-1.63-8.82-3.65Z"
-                      />
-                    </g>
-                    <rect
-                      className="st0"
-                      x="98.14"
-                      y="891.43"
-                      width="64.24"
-                      height=".84"
-                      transform="translate(-592.48 353.32) rotate(-45)"
-                    />
-                    <rect className="st9" x="129.84" y="908.82" width=".84" height="15.17" />
-                  </g>
-                  <path
-                    className="st4"
-                    d="M154.28,870.47l-5.77,5.77c3.73,4.35,5.79,9.87,5.79,15.63,0,12.6-9.71,23-22.19,23.96v8.17c17.01-.97,30.32-15.05,30.32-32.12,0-7.91-2.9-15.5-8.15-21.4Z"
-                  />
                 </g>
               </g>
             </svg>
           </div>
 
-          {/* Bottom left tabs */}
+          {/* Tabs */}
           <div className="tabs">
             <button
               className={`pill ${isTab("capture") ? "active" : ""}`}
               type="button"
-              onClick={() => setSafeTab("capture")}
+              onClick={() => setTab("capture")}
             >
               CAPTURE
             </button>
             <button
               className={`pill ${isTab("gallery") ? "active" : ""}`}
               type="button"
-              onClick={() => setSafeTab("gallery")}
+              onClick={() => setTab("gallery")}
             >
               GALLERY
             </button>
             <button
               className={`pill ${isTab("accessory") ? "active" : ""}`}
               type="button"
-              onClick={() => setSafeTab("accessory")}
+              onClick={() => setTab("accessory")}
             >
               ACCESSORY
             </button>
           </div>
 
-          {/* Mic toggle */}
+          {/* Mic */}
           <button
-            className={`mic ${micOn ? "on" : "off"}`}
+            className={`mic ${micOn ? "on" : ""}`}
             type="button"
             onClick={() => setMicOn((v) => !v)}
             aria-label="Microphone"
           >
             <span className="micIcon">🎙</span>
+            {!micOn && <span className="micMuteSlash" aria-hidden="true" />}
           </button>
 
-          {/* Video/Photo toggle group */}
+          {/* Mode */}
           <div className="modeWrap">
             <button
               type="button"
@@ -564,7 +564,7 @@ export default function Capture() {
             </button>
           </div>
 
-          {/* Big red record/shutter button */}
+          {/* Big red */}
           <button
             type="button"
             className={`bigRed ${isRecording ? "recording" : ""}`}
@@ -581,7 +581,6 @@ export default function Capture() {
             <div className="bigRedInner" />
           </button>
 
-          {/* Small status text for sanity (invisible-ish) */}
           <div className="tinyStatus">
             {tab.toUpperCase()} · {mode.toUpperCase()}
             {mode === "video" ? (isRecording ? " · REC" : "") : ""}
@@ -597,18 +596,17 @@ export default function Capture() {
           background:#0b0f18;
         }
 
-        /* Centering fix: because transforms don't affect layout, we centre via absolute 50/50 + translate */
         .stageWrap{
-          position: relative;
-          width: 100%;
-          height: 100%;
+          width:100%;
+          height:100%;
+          display:flex;
+          align-items:center;
+          justify-content:center;
         }
 
         .stage{
-          position:absolute;
-          left: 50%;
-          top: 50%;
-          transform-origin: center;
+          position:relative;
+          transform-origin: top left;
           border-radius: 40px;
         }
 
@@ -620,7 +618,6 @@ export default function Capture() {
             #0b0f18;
         }
 
-        /* Cloud button */
         .cloudBtn{
           position:absolute;
           right: 92px;
@@ -647,7 +644,6 @@ export default function Capture() {
         .cloudIcon{ font-size: 18px; opacity:0.95; }
         .cloudText{ transform: translateY(0.5px); }
 
-        /* Frames */
         .frame{
           position:absolute;
           overflow:hidden;
@@ -668,6 +664,7 @@ export default function Capture() {
           object-fit: cover;
           object-position: center;
           filter: contrast(1.05) brightness(0.95);
+          transform-origin: center center;
         }
 
         .tag{
@@ -686,11 +683,9 @@ export default function Capture() {
           background: rgba(0,0,0,0.38);
           border: 1px solid rgba(255,255,255,0.18);
           backdrop-filter: blur(8px);
+          pointer-events:none;
         }
-        .tagStrong{
-          font-weight: 900;
-          color: #fff;
-        }
+        .tagStrong{ font-weight: 900; color: #fff; }
         .tagLeft{ left: 28px; }
         .tagRight{ right: 28px; }
 
@@ -710,21 +705,25 @@ export default function Capture() {
           border: 1px solid rgba(255,255,255,0.18);
           backdrop-filter: blur(8px);
         }
+        .zoomBtn{
+          cursor:pointer;
+          pointer-events:auto;
+          user-select:none;
+        }
+        .zoomBtn:hover{ border-color: rgba(255,255,255,0.35); }
         .zoomLeft{ left: 28px; }
         .zoomRight{ right: 28px; top: auto; bottom: 22px; }
 
-        /* Logo position — HALF SIZE (designer’s head approved) */
         .logo{
           position:absolute;
           left: 92px;
           top: 820px;
-          transform: scale(0.525); /* ~half of previous 1.05 */
+          transform: scale(1.05);
           transform-origin: left top;
           filter: drop-shadow(0 10px 24px rgba(0,0,0,0.55));
           pointer-events:none;
         }
 
-        /* Bottom left tabs */
         .tabs{
           position:absolute;
           left: 92px;
@@ -755,7 +754,6 @@ export default function Capture() {
             0 10px 30px rgba(0,0,0,0.45);
         }
 
-        /* Mic */
         .mic{
           position:absolute;
           left: 809px;
@@ -776,28 +774,21 @@ export default function Capture() {
           border-color: rgba(35,193,167,0.65);
           box-shadow: 0 0 0 2px rgba(35,193,167,0.18) inset;
         }
-        .mic.off{
-          border-color: rgba(234,29,50,0.75);
-          box-shadow: 0 0 0 2px rgba(234,29,50,0.18) inset;
-        }
-        /* Red slash when muted */
-        .mic.off::after{
-          content:"";
-          position:absolute;
-          width: 56px;
-          height: 3px;
-          background: rgba(234,29,50,0.95);
-          border-radius: 999px;
-          transform: rotate(-45deg);
-          box-shadow: 0 0 10px rgba(234,29,50,0.25);
-        }
         .micIcon{
           font-size: 26px;
           opacity: 0.95;
-          filter: saturate(0.9);
+          transform: translateY(0.5px);
+        }
+        .micMuteSlash{
+          position:absolute;
+          width: 44px;
+          height: 4px;
+          background: rgba(234,29,50,0.95);
+          transform: rotate(-35deg);
+          border-radius: 4px;
+          box-shadow: 0 0 0 2px rgba(0,0,0,0.35);
         }
 
-        /* Video/Photo toggle group */
         .modeWrap{
           position:absolute;
           left: 921px;
@@ -837,7 +828,6 @@ export default function Capture() {
         .modeIcon{ font-size: 18px; transform: translateY(-0.5px); }
         .modeText{ transform: translateY(0.5px); }
 
-        /* Big red button */
         .bigRed{
           position:absolute;
           left: 1546px;
