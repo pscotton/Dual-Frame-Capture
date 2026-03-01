@@ -172,9 +172,7 @@ export default function Capture() {
         rafRef.current = requestAnimationFrame(tick);
       } catch (e) {
         console.error(e);
-        alert(
-          "Camera/Mic permission failed. Please allow access, then refresh."
-        );
+        alert("Camera/Mic permission failed. Please allow access, then refresh.");
       }
     }
 
@@ -271,17 +269,26 @@ export default function Capture() {
   const takePhotos = async () => {
     const cL = canvasLandscapeRef.current;
     const cP = canvasPortraitRef.current;
+    const v = liveVideoRef.current;
     if (!cL || !cP) return;
 
-    const blobL: Blob | null = await new Promise((resolve) =>
-      cL.toBlob((b) => resolve(b), "image/png")
-    );
-    const blobP: Blob | null = await new Promise((resolve) =>
-      cP.toBlob((b) => resolve(b), "image/png")
-    );
+    // Force BOTH canvases to render from the SAME live frame right now (minimises the “smile mismatch”)
+    if (v) {
+      const ctxL = cL.getContext("2d");
+      const ctxP = cP.getContext("2d");
+      if (ctxL) drawCover(ctxL, v, cL.width, cL.height);
+      if (ctxP) drawCover(ctxP, v, cP.width, cP.height);
+    }
 
-    if (blobL) downloadBlob(blobL, `flipcast_landscape_${Date.now()}.png`);
-    if (blobP) downloadBlob(blobP, `flipcast_portrait_${Date.now()}.png`);
+    // Also run blobs in parallel
+    const [blobL, blobP] = await Promise.all([
+      new Promise<Blob | null>((resolve) => cL.toBlob((b) => resolve(b), "image/png")),
+      new Promise<Blob | null>((resolve) => cP.toBlob((b) => resolve(b), "image/png")),
+    ]);
+
+    const ts = Date.now();
+    if (blobL) downloadBlob(blobL, `flipcast_landscape_${ts}.png`);
+    if (blobP) downloadBlob(blobP, `flipcast_portrait_${ts}.png`);
   };
 
   const onBigRedPress = async () => {
@@ -323,14 +330,14 @@ export default function Capture() {
         style={{ position: "absolute", left: -99999, top: -99999 }}
       />
 
-      {/* Centered stage that scales proportionally */}
+      {/* Stage (absolutely centred both axes, scaling from centre) */}
       <div className="stageWrap">
         <div
           className="stage"
           style={{
             width: STAGE_W,
             height: STAGE_H,
-            transform: `scale(${stageScale})`,
+            transform: `translate(-50%, -50%) scale(${stageScale})`,
           }}
         >
           {/* Background */}
@@ -529,7 +536,7 @@ export default function Capture() {
 
           {/* Mic toggle */}
           <button
-            className={`mic ${micOn ? "on" : ""}`}
+            className={`mic ${micOn ? "on" : "off"}`}
             type="button"
             onClick={() => setMicOn((v) => !v)}
             aria-label="Microphone"
@@ -562,7 +569,13 @@ export default function Capture() {
             type="button"
             className={`bigRed ${isRecording ? "recording" : ""}`}
             onClick={onBigRedPress}
-            aria-label={mode === "photo" ? "Take photo" : isRecording ? "Stop recording" : "Start recording"}
+            aria-label={
+              mode === "photo"
+                ? "Take photo"
+                : isRecording
+                ? "Stop recording"
+                : "Start recording"
+            }
           >
             <div className="bigRedOuter" />
             <div className="bigRedInner" />
@@ -584,17 +597,18 @@ export default function Capture() {
           background:#0b0f18;
         }
 
+        /* Centering fix: because transforms don't affect layout, we centre via absolute 50/50 + translate */
         .stageWrap{
-          width:100%;
-          height:100%;
-          display:flex;
-          align-items:center;
-          justify-content:center;
+          position: relative;
+          width: 100%;
+          height: 100%;
         }
 
         .stage{
-          position:relative;
-          transform-origin: top left;
+          position:absolute;
+          left: 50%;
+          top: 50%;
+          transform-origin: center;
           border-radius: 40px;
         }
 
@@ -666,7 +680,7 @@ export default function Capture() {
           align-items:center;
           gap: 6px;
           font-size: 14px;
-          font-weight: 700; /* match LANDSCAPE weight */
+          font-weight: 700;
           letter-spacing: 0.06em;
           color: rgba(255,255,255,0.92);
           background: rgba(0,0,0,0.38);
@@ -699,12 +713,12 @@ export default function Capture() {
         .zoomLeft{ left: 28px; }
         .zoomRight{ right: 28px; top: auto; bottom: 22px; }
 
-        /* Logo position */
+        /* Logo position — HALF SIZE (designer’s head approved) */
         .logo{
           position:absolute;
           left: 92px;
           top: 820px;
-          transform: scale(1.05);
+          transform: scale(0.525); /* ~half of previous 1.05 */
           transform-origin: left top;
           filter: drop-shadow(0 10px 24px rgba(0,0,0,0.55));
           pointer-events:none;
@@ -762,9 +776,25 @@ export default function Capture() {
           border-color: rgba(35,193,167,0.65);
           box-shadow: 0 0 0 2px rgba(35,193,167,0.18) inset;
         }
+        .mic.off{
+          border-color: rgba(234,29,50,0.75);
+          box-shadow: 0 0 0 2px rgba(234,29,50,0.18) inset;
+        }
+        /* Red slash when muted */
+        .mic.off::after{
+          content:"";
+          position:absolute;
+          width: 56px;
+          height: 3px;
+          background: rgba(234,29,50,0.95);
+          border-radius: 999px;
+          transform: rotate(-45deg);
+          box-shadow: 0 0 10px rgba(234,29,50,0.25);
+        }
         .micIcon{
-          font-size: 26px; /* bigger icon */
+          font-size: 26px;
           opacity: 0.95;
+          filter: saturate(0.9);
         }
 
         /* Video/Photo toggle group */
@@ -796,7 +826,7 @@ export default function Capture() {
           gap: 10px;
           font-weight: 900;
           letter-spacing: 0.08em;
-          font-size: 16px; /* bigger text */
+          font-size: 16px;
         }
         .modeBtn.active{
           background: rgba(255,255,255,0.92);
