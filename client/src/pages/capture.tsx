@@ -87,51 +87,6 @@ function drawCover(
   ctx.drawImage(video, sx, sy, sw, sh, 0, 0, outW, outH);
 }
 
-function CloudIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        fill="currentColor"
-        d="M19 18H6.5C4.57 18 3 16.43 3 14.5c0-1.77 1.31-3.25 3.02-3.47C6.45 8.73 8.5 7 11 7c2.3 0 4.21 1.46 4.86 3.5H16c2.21 0 4 1.79 4 4s-1.79 3.5-1 3.5Z"
-        opacity="0.9"
-      />
-    </svg>
-  );
-}
-
-function MicIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        fill="currentColor"
-        d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Zm5-3a1 1 0 1 1 2 0 7 7 0 0 1-6 6.92V20h2a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2h2v-2.08A7 7 0 0 1 5 11a1 1 0 1 1 2 0 5 5 0 0 0 10 0Z"
-      />
-    </svg>
-  );
-}
-
-function VideoIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        fill="currentColor"
-        d="M4 7a3 3 0 0 1 3-3h7a3 3 0 0 1 3 3v1.2l2.4-1.6A2 2 0 0 1 22 8.27v7.46a2 2 0 0 1-2.6 1.91L17 16v1a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7Z"
-      />
-    </svg>
-  );
-}
-
-function PhotoIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        fill="currentColor"
-        d="M7 7h2l1-2h4l1 2h2a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-8a3 3 0 0 1 3-3Zm5 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"
-      />
-    </svg>
-  );
-}
-
 export default function Capture() {
   const [tab, setTab] = useState<Tab>("capture");
   const [mode, setMode] = useState<Mode>("video");
@@ -168,7 +123,7 @@ export default function Capture() {
 
   const mimeType = useMemo(() => pickMimeType(), []);
 
-  // Centre the stage and scale to fit viewport (no top cropping)
+  // --- Properly centre the stage and scale it to fit viewport (no top cropping) ---
   useEffect(() => {
     const onResize = () => {
       const vw = window.innerWidth;
@@ -181,7 +136,7 @@ export default function Capture() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // Start camera once
+  // --- Start camera once ---
   useEffect(() => {
     let cancelled = false;
 
@@ -258,7 +213,7 @@ export default function Capture() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Toggle mic track on/off (recording only; previews stay muted)
+  // --- Toggle mic track on/off (recording only; previews stay muted) ---
   useEffect(() => {
     const s = streamRef.current;
     if (!s) return;
@@ -278,7 +233,7 @@ export default function Capture() {
     return () => window.removeEventListener("mousedown", onDown);
   }, []);
 
-  // Recording control
+  // --- Recording control ---
   const startRecording = () => {
     if (isRecording) return;
     const cL = canvasLandscapeRef.current;
@@ -371,11 +326,26 @@ export default function Capture() {
   return (
     <div className="page">
       {/* Hidden live video source for canvas drawing */}
-      <video ref={liveVideoRef} playsInline muted style={{ position: "absolute", left: -99999, top: -99999 }} />
+      <video
+        ref={liveVideoRef}
+        playsInline
+        muted
+        style={{ position: "absolute", left: -99999, top: -99999 }}
+      />
 
       {/* Offscreen canvases used for dual recording + photos */}
-      <canvas ref={canvasLandscapeRef} width={1280} height={720} style={{ position: "absolute", left: -99999, top: -99999 }} />
-      <canvas ref={canvasPortraitRef} width={720} height={1280} style={{ position: "absolute", left: -99999, top: -99999 }} />
+      <canvas
+        ref={canvasLandscapeRef}
+        width={1280}
+        height={720}
+        style={{ position: "absolute", left: -99999, top: -99999 }}
+      />
+      <canvas
+        ref={canvasPortraitRef}
+        width={720}
+        height={1280}
+        style={{ position: "absolute", left: -99999, top: -99999 }}
+      />
 
       {/* Stage holder - true centre scaling (no cropping) */}
       <div className="stageViewport">
@@ -387,6 +357,7 @@ export default function Capture() {
             transform: `translate(-50%, -50%) scale(${stageScale})`,
           }}
         >
+          {/* Background */}
           <div className="bg" />
 
           {/* Cloud Sync */}
@@ -396,9 +367,7 @@ export default function Capture() {
             type="button"
             aria-label="Cloud Sync"
           >
-            <span className="cloudIcon" aria-hidden="true">
-              <CloudIcon />
-            </span>
+            <span className="cloudIcon">☁</span>
             <span className="cloudText">CLOUD SYNC</span>
           </button>
 
@@ -479,7 +448,7 @@ export default function Capture() {
             </div>
           </div>
 
-          {/* Logo (size controlled by CSS width variable, NOT by SVG width/height) */}
+          {/* Logo — size is controlled ONLY via CSS width (no transform scaling) */}
           <div className="logo" aria-hidden="true">
             <svg viewBox="90 850 420 110">
               <defs>
@@ -503,7 +472,6 @@ export default function Capture() {
                       d="M352.79,860.33c4.67,0,8.47,3.8,8.47,8.47v46.16c0,4.67-3.8,8.47-8.47,8.47h-175.6c-4.67,0-8.47-3.8-8.47-8.47v-46.16c0-4.67,3.8-8.47,8.47-8.47h175.6M352.79,859.83h-175.6c-4.96,0-8.97,4.02-8.97,8.97v46.16c0,4.96,4.02,8.97,8.97,8.97h175.6c4.96,0,8.97-4.02,8.97-8.97v-46.16c0-4.96-4.02-8.97-8.97-8.97h0Z"
                     />
                   </g>
-
                   <g>
                     <path
                       className="st2"
@@ -513,10 +481,7 @@ export default function Capture() {
                       className="st0"
                       d="M266.62,893.86v-12c0-4.01,3.25-7.26,7.26-7.26h10.88v-5.96h-11.01c-7.52,0-13.62,6.1-13.62,13.62v17.28c0,7.52,6.1,13.62,13.62,13.62h11.01v-5.96h-10.88c-4.01,0-7.26-3.25-7.26-7.26v-6.1Z"
                     />
-                    <path
-                      className="st2"
-                      d="M205.5,908.53v-39.88h6.26v44.52h-1.61c-2.57,0-4.65-2.08-4.65-4.65Z"
-                    />
+                    <path className="st2" d="M205.5,908.53v-39.88h6.26v44.52h-1.61c-2.57,0-4.65-2.08-4.65-4.65Z" />
                     <path
                       className="st2"
                       d="M241.48,879.52h-13.44v35.77c0,2.57,2.08,4.65,4.65,4.65h1.61v-6.77h7.19c7.52,0,13.62-6.1,13.62-13.62v-6.41c0-7.52-6.1-13.62-13.62-13.62ZM248.61,899.96c0,4.01-3.25,7.26-7.26,7.26h-7.05v-21.74h7.05c4.01,0,7.26,3.25,7.26,7.26v7.22Z"
@@ -533,16 +498,12 @@ export default function Capture() {
                       className="st0"
                       d="M312.11,879.52h-13.37c-7.52,0-13.62,6.1-13.62,13.62v6.41c0,7.52,6.1,13.62,13.62,13.62h4.9v-5.96h-4.77c-4.01,0-7.26-3.25-7.26-7.26v-7.22c0-4.01,3.25-7.26,7.26-7.26h7.05v23.05c0,2.57,2.08,4.65,4.65,4.65h1.61v-33.65h-.07Z"
                     />
-                    <path
-                      className="st2"
-                      d="M216.76,875.99v-7.34h6.26v7.34h-6.26ZM216.76,908.53v-28.69h6.26v33.33h-1.61c-2.57,0-4.65-2.08-4.65-4.65Z"
-                    />
+                    <path className="st2" d="M216.76,875.99v-7.34h6.26v7.34h-6.26ZM216.76,908.53v-28.69h6.26v33.33h-1.61c-2.57,0-4.65-2.08-4.65-4.65Z" />
                     <path
                       className="st0"
                       d="M331.02,888.68c-.3-2.41-1.68-4.03-4.27-4.03-2.41,0-3.91,1.62-3.91,3.55,0,2.83,2.89,3.67,6.2,4.69,4.69,1.44,9.02,4.27,9.02,10.47s-4.69,10.65-11.19,10.65c-6.02,0-11.79-4.09-11.79-11.79h6.26c.3,4.03,2.35,6.08,5.66,6.08,2.89,0,4.81-1.86,4.81-4.57,0-2.29-1.74-3.79-5.66-5.05-8.18-2.59-9.57-6.14-9.57-9.93,0-5.9,4.99-9.81,10.47-9.81s10.05,3.85,10.23,9.75h-6.26Z"
                     />
                   </g>
-
                   <path
                     className="st0"
                     d="M354.18,879.52h-4.25v-10.88h-6.5v10.88h-4.25v5.96h4.25v23.05c0,2.57,2.08,4.65,4.65,4.65h1.85v-27.69h4.25v-5.96Z"
@@ -551,7 +512,6 @@ export default function Capture() {
                     className="st9"
                     d="M455.56,879.52h-13.5c-3.75,0-6.78,3.04-6.78,6.78v20.08c0,3.75,3.04,6.78,6.79,6.78h13.49c3.75,0,6.78-3.04,6.78-6.78v-20.08c0-3.75-3.03-6.78-6.78-6.78ZM455.85,904.9c0,1.28-1.04,2.32-2.32,2.32h-9.43c-1.28,0-2.32-1.04-2.32-2.32v-17.1c0-1.28,1.03-2.32,2.31-2.32h9.44c1.28,0,2.32,1.04,2.32,2.32v17.1Z"
                   />
-
                   <g>
                     <g>
                       <path
@@ -593,7 +553,6 @@ export default function Capture() {
                     />
                     <rect className="st9" x="129.84" y="908.82" width=".84" height="15.17" />
                   </g>
-
                   <path
                     className="st4"
                     d="M154.28,870.47l-5.77,5.77c3.73,4.35,5.79,9.87,5.79,15.63,0,12.6-9.71,23-22.19,23.96v8.17c17.01-.97,30.32-15.05,30.32-32.12,0-7.91-2.9-15.5-8.15-21.4Z"
@@ -635,33 +594,25 @@ export default function Capture() {
             onClick={() => setMicOn((v) => !v)}
             aria-label="Microphone"
           >
-            <span className="micIcon" aria-hidden="true">
-              <MicIcon />
-            </span>
+            <span className="micIcon">🎙</span>
           </button>
 
           {/* Video/Photo toggle group */}
-          <div className="modeWrap" role="group" aria-label="Capture mode">
+          <div className="modeWrap">
             <button
               type="button"
               className={`modeBtn ${mode === "video" ? "active" : ""}`}
               onClick={() => setMode("video")}
-              aria-pressed={mode === "video"}
             >
-              <span className="modeIcon" aria-hidden="true">
-                <VideoIcon />
-              </span>
+              <span className="modeIcon">📹</span>
               <span className="modeText">VIDEO</span>
             </button>
             <button
               type="button"
               className={`modeBtn ${mode === "photo" ? "active" : ""}`}
               onClick={() => setMode("photo")}
-              aria-pressed={mode === "photo"}
             >
-              <span className="modeIcon" aria-hidden="true">
-                <PhotoIcon />
-              </span>
+              <span className="modeIcon">📷</span>
               <span className="modeText">PHOTO</span>
             </button>
           </div>
@@ -736,13 +687,13 @@ export default function Capture() {
           font-weight: 700;
           font-size: 14px;
           backdrop-filter: blur(10px);
-          z-index: 6;
+          z-index: 5;
         }
         .cloudBtn.on{
           border-color: rgba(35,193,167,0.55);
           box-shadow: 0 0 0 2px rgba(35,193,167,0.18) inset;
         }
-        .cloudIcon{ display:inline-flex; opacity:0.95; }
+        .cloudIcon{ font-size: 18px; opacity:0.95; }
         .cloudText{ transform: translateY(0.5px); }
 
         /* Frames */
@@ -785,7 +736,7 @@ export default function Capture() {
           background: rgba(0,0,0,0.38);
           border: 1px solid rgba(255,255,255,0.18);
           backdrop-filter: blur(8px);
-          z-index: 4;
+          z-index: 3;
         }
         .tagStrong{
           font-weight: 900;
@@ -809,7 +760,7 @@ export default function Capture() {
           border: 1px solid rgba(255,255,255,0.18);
           backdrop-filter: blur(8px);
           cursor:pointer;
-          z-index: 5;
+          z-index: 6;
         }
         .zoomLeft{ left: 28px; top: 26px; }
         .zoomRight{ right: 28px; top: auto; bottom: 22px; }
@@ -847,13 +798,13 @@ export default function Capture() {
           text-align: right;
         }
 
-        /* Logo position + size (predictable): change ONLY left/top/--LOGO_W */
+        /* LOGO — predictable sizing via width (NO transform scaling) */
         .logo{
           position:absolute;
           left: 92px;
           top: 820px;
 
-          /* Size control (try 380px–520px) */
+          /* 👇 Change ONLY this to resize. Try 360px–520px */
           --LOGO_W: 420px;
 
           width: var(--LOGO_W);
@@ -864,13 +815,13 @@ export default function Capture() {
           pointer-events:none;
           opacity: 0.95;
 
-          /* keep behind controls */
+          /* keep behind all controls */
           z-index: 1;
         }
         .logo svg{
           width: 100%;
           height: auto;
-          display: block;
+          display:block;
         }
 
         /* Bottom left tabs */
@@ -880,7 +831,7 @@ export default function Capture() {
           top: 968px;
           display:flex;
           gap: 22px;
-          z-index: 6;
+          z-index: 7;
         }
         .pill{
           height: 58px;
@@ -921,14 +872,13 @@ export default function Capture() {
           cursor:pointer;
           backdrop-filter: blur(10px);
           box-shadow: 0 0 0 1px rgba(255,255,255,0.05) inset;
-          z-index: 6;
-          color: rgba(255,255,255,0.92);
+          z-index: 7;
         }
         .mic.on{
           border-color: rgba(35,193,167,0.65);
           box-shadow: 0 0 0 2px rgba(35,193,167,0.18) inset;
         }
-        .micIcon{ display:inline-flex; opacity: 0.95; }
+        .micIcon{ font-size: 26px; opacity: 0.95; }
 
         /* Video/Photo toggle group */
         .modeWrap{
@@ -945,7 +895,7 @@ export default function Capture() {
           gap: 8px;
           backdrop-filter: blur(10px);
           box-shadow: 0 0 0 1px rgba(255,255,255,0.05) inset;
-          z-index: 6;
+          z-index: 7;
         }
         .modeBtn{
           flex:1;
@@ -968,7 +918,7 @@ export default function Capture() {
           border-color: rgba(255,255,255,0.65);
           box-shadow: 0 10px 26px rgba(0,0,0,0.35);
         }
-        .modeIcon{ display:inline-flex; transform: translateY(-0.5px); }
+        .modeIcon{ font-size: 18px; transform: translateY(-0.5px); }
         .modeText{ transform: translateY(0.5px); }
 
         /* Big red button */
@@ -985,7 +935,7 @@ export default function Capture() {
           display:flex;
           align-items:center;
           justify-content:center;
-          z-index: 6;
+          z-index: 7;
         }
         .bigRedOuter{
           position:absolute;
@@ -1022,7 +972,7 @@ export default function Capture() {
           color: rgba(255,255,255,0.20);
           user-select:none;
           pointer-events:none;
-          z-index: 6;
+          z-index: 7;
         }
       `}</style>
     </div>
