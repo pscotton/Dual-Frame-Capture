@@ -1,17 +1,6 @@
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-/**
- * FlipCastDuo — fixed-stage layout
- * - Locks the entire UI to a 1920×1080 “stage”
- * - Scales the stage proportionally to fit any browser size
- * - Enlarges the logo and removes any “white panel” look
- *
- * Notes:
- * - This file assumes you already have your camera + capture logic working elsewhere in this component.
- * - If you had extra helper components before, keep them in this file (below) or inline them here.
- */
-
 const BASE_W = 1920;
 const BASE_H = 1080;
 
@@ -19,11 +8,21 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
 /**
- * Inline SVG logo cropped from your provided SVG (logo group area).
- * - No background rectangle
- * - Uses a tight viewBox around the logo
- * - Scales cleanly
+ * Inline SVG logo (cropped)
+ * - No panel background
+ * - Bigger by default
  */
 function FlipCastLogo({ height = 72 }: { height?: number }) {
   return (
@@ -45,7 +44,6 @@ function FlipCastLogo({ height = 72 }: { height?: number }) {
         </style>
       </defs>
 
-      {/* Wordmark container */}
       <g>
         <g>
           <path d="M177.18,860.08h175.6c4.82,0,8.72,3.91,8.72,8.72v46.16c0,4.82-3.91,8.72-8.72,8.72h-175.6c-4.81,0-8.72-3.91-8.72-8.72v-46.16c0-4.82,3.91-8.72,8.72-8.72Z" />
@@ -55,7 +53,6 @@ function FlipCastLogo({ height = 72 }: { height?: number }) {
           />
         </g>
 
-        {/* FlipCastDuo text */}
         <g>
           <path
             className="st2"
@@ -103,69 +100,100 @@ function FlipCastLogo({ height = 72 }: { height?: number }) {
           className="st9"
           d="M455.56,879.52h-13.5c-3.75,0-6.78,3.04-6.78,6.78v20.08c0,3.75,3.04,6.78,6.79,6.78h13.49c3.75,0,6.78-3.04,6.78-6.78v-20.08c0-3.75-3.03-6.78-6.78-6.78ZM455.85,904.9c0,1.28-1.04,2.32-2.32,2.32h-9.43c-1.28,0-2.32-1.04-2.32-2.32v-17.1c0-1.28,1.03-2.32,2.31-2.32h9.44c1.28,0,2.32,1.04,2.32,2.32v17.1Z"
         />
-
-        {/* Icon mark (left) */}
-        <g>
-          <g>
-            <path
-              className="st0"
-              d="M106.57,895.94h17l8.13-8.13h-25.12c1.94-11.33,11.8-19.98,23.68-19.98,5.75,0,11.27,2.06,15.63,5.79l5.77-5.77c-5.9-5.26-13.49-8.15-21.4-8.15-17.74,0-32.18,14.43-32.18,32.18,0,7.91,2.9,15.5,8.15,21.4l5.77-5.77c-2.84-3.31-4.7-7.31-5.43-11.57Z"
-            />
-            <path
-              className="st9"
-              d="M128.4,923.99v-8.16c-5.06-.39-9.91-2.4-13.77-5.7l-5.77,5.77c5.4,4.81,12.33,7.68,19.54,8.09Z"
-            />
-          </g>
-          <g>
-            <path
-              className="st0"
-              d="M130.25,872.71c-9.35,0-17.28,6.7-18.86,15.92l2.06.35c1.41-8.22,8.48-14.19,16.8-14.19,3.88,0,7.64,1.34,10.67,3.78l1.49-1.49c-3.43-2.83-7.73-4.38-12.16-4.38Z"
-            />
-            <path
-              className="st0"
-              d="M113.44,894.76l-2.06.35c.56,3.28,1.98,6.35,4.09,8.92l1.49-1.49c-1.81-2.26-3.03-4.93-3.52-7.78Z"
-            />
-          </g>
-          <g>
-            <path
-              className="st4"
-              d="M149.42,891.87c0-4.43-1.56-8.73-4.38-12.16l-1.49,1.49c2.44,3.03,3.78,6.8,3.78,10.67,0,8.68-6.64,16.02-15.22,16.95v2.1c9.74-.94,17.31-9.23,17.31-19.05Z"
-            />
-            <path
-              className="st9"
-              d="M119.58,905.17l-1.49,1.49c2.92,2.4,6.55,3.9,10.3,4.27v-2.1c-3.2-.35-6.3-1.63-8.82-3.65Z"
-            />
-          </g>
-        </g>
-
-        <path
-          className="st4"
-          d="M154.28,870.47l-5.77,5.77c3.73,4.35,5.79,9.87,5.79,15.63,0,12.6-9.71,23-22.19,23.96v8.17c17.01-.97,30.32-15.05,30.32-32.12,0-7.91-2.9-15.5-8.15-21.4Z"
-        />
       </g>
     </svg>
   );
 }
 
 /**
- * MAIN PAGE COMPONENT
- * Keep your existing capture logic inside — this layout wrapper won’t break it.
+ * Draw one source <video> into one <canvas> with:
+ * - aspect-correct "cover" crop
+ * - optional zoom around centre
  */
-export default function CapturePage() {
+function drawCroppedCover(
+  ctx: CanvasRenderingContext2D,
+  video: HTMLVideoElement,
+  canvasW: number,
+  canvasH: number,
+  zoom: number
+) {
+  const vw = video.videoWidth;
+  const vh = video.videoHeight;
+  if (!vw || !vh) return;
+
+  // We want to "cover" the canvas
+  const canvasAspect = canvasW / canvasH;
+  const videoAspect = vw / vh;
+
+  let srcW = vw;
+  let srcH = vh;
+
+  if (videoAspect > canvasAspect) {
+    // video wider than target -> crop width
+    srcH = vh;
+    srcW = vh * canvasAspect;
+  } else {
+    // video taller than target -> crop height
+    srcW = vw;
+    srcH = vw / canvasAspect;
+  }
+
+  // Apply zoom by shrinking the source crop
+  const z = clamp(zoom, 1, 3);
+  const zoomedW = srcW / z;
+  const zoomedH = srcH / z;
+
+  // Center crop
+  const sx = (vw - zoomedW) / 2;
+  const sy = (vh - zoomedH) / 2;
+
+  ctx.clearRect(0, 0, canvasW, canvasH);
+  ctx.drawImage(video, sx, sy, zoomedW, zoomedH, 0, 0, canvasW, canvasH);
+}
+
+export default function Capture() {
+  // stage scaling
   const [scale, setScale] = useState(1);
 
-  // ---- Keep your existing camera state/refs below ----
-  const landscapeVideoRef = useRef<HTMLVideoElement | null>(null);
-  const portraitVideoRef = useRef<HTMLVideoElement | null>(null);
+  // mode
+  const [mode, setMode] = useState<"video" | "photo">("video");
 
-  // Example zoom UI state (keep/replace with yours)
+  // camera + status
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [hasCamera, setHasCamera] = useState(false);
+
+  // zoom
   const [landscapeZoom, setLandscapeZoom] = useState(1.0);
   const [portraitZoom, setPortraitZoom] = useState(1.4);
 
-  // ---- STAGE SCALE (locks layout) ----
+  // recording
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordSeconds, setRecordSeconds] = useState(0);
+
+  // refs
+  const previewVideoRef = useRef<HTMLVideoElement | null>(null); // single hidden "source" video from camera
+  const streamRef = useRef<MediaStream | null>(null);
+
+  const landscapeCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const portraitCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  const landscapePreviewRef = useRef<HTMLVideoElement | null>(null); // visible preview
+  const portraitPreviewRef = useRef<HTMLVideoElement | null>(null); // visible preview
+
+  const rafRef = useRef<number | null>(null);
+
+  // recorders
+  const recLandscapeRef = useRef<MediaRecorder | null>(null);
+  const recPortraitRef = useRef<MediaRecorder | null>(null);
+  const chunksLandscapeRef = useRef<BlobPart[]>([]);
+  const chunksPortraitRef = useRef<BlobPart[]>([]);
+
+  const timerRef = useRef<number | null>(null);
+
+  // scale stage to viewport
   useEffect(() => {
     const calc = () => {
-      const pad = 24; // outer padding
+      const pad = 24;
       const vw = Math.max(320, window.innerWidth - pad * 2);
       const vh = Math.max(320, window.innerHeight - pad * 2);
       const s = Math.min(vw / BASE_W, vh / BASE_H);
@@ -186,35 +214,306 @@ export default function CapturePage() {
     [scale]
   );
 
-  // ---- ACTIONS (replace with your real ones if already implemented) ----
-  const onCloudSync = () => {
-    // hook up to your logic
-    console.log("Cloud sync");
+  // start camera
+  useEffect(() => {
+    let cancelled = false;
+
+    async function start() {
+      try {
+        setCameraError(null);
+
+        // stop any existing
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach((t) => t.stop());
+          streamRef.current = null;
+        }
+
+        // Camera constraints (reasonable defaults)
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: "user",
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
+          audio: true,
+        });
+
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+
+        streamRef.current = stream;
+
+        const srcVid = previewVideoRef.current;
+        if (!srcVid) return;
+
+        srcVid.srcObject = stream;
+        await srcVid.play().catch(() => {});
+
+        setHasCamera(true);
+
+        // Attach the canvas previews to the visible video frames
+        // We will draw into canvases, and optionally pipe canvases into the preview videos.
+        const lc = landscapeCanvasRef.current;
+        const pc = portraitCanvasRef.current;
+        const lv = landscapePreviewRef.current;
+        const pv = portraitPreviewRef.current;
+
+        if (lc && lv) {
+          const s = lc.captureStream(30);
+          lv.srcObject = s;
+          await lv.play().catch(() => {});
+        }
+        if (pc && pv) {
+          const s = pc.captureStream(30);
+          pv.srcObject = s;
+          await pv.play().catch(() => {});
+        }
+
+        // Start draw loop
+        const draw = () => {
+          const v = previewVideoRef.current;
+          const lcan = landscapeCanvasRef.current;
+          const pcan = portraitCanvasRef.current;
+
+          if (v && lcan && pcan) {
+            const lctx = lcan.getContext("2d");
+            const pctx = pcan.getContext("2d");
+            if (lctx && pctx) {
+              // exact sizes of your frames
+              // Landscape frame is 1280×720
+              // Portrait frame is 405×720 (but for recording and quality, we’ll draw at 720×1280 internally)
+              // HOWEVER: your portrait frame is visually 405×720. If we draw exactly 405×720, the recording is low.
+              // So: keep canvas internal at 720×1280, then scale to fit preview via CSS (we do that below).
+              drawCroppedCover(lctx, v, 1280, 720, landscapeZoom);
+              drawCroppedCover(pctx, v, 720, 1280, portraitZoom);
+            }
+          }
+          rafRef.current = requestAnimationFrame(draw);
+        };
+
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        rafRef.current = requestAnimationFrame(draw);
+      } catch (err: any) {
+        console.error(err);
+        setHasCamera(false);
+        setCameraError(
+          err?.message ||
+            "Camera unavailable. Please allow camera/mic permissions and refresh."
+        );
+      }
+    }
+
+    start();
+
+    return () => {
+      cancelled = true;
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+      if (timerRef.current) window.clearInterval(timerRef.current);
+      timerRef.current = null;
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // wheel zoom helpers
+  const onWheelZoomLandscape = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    setLandscapeZoom((z) => clamp(Number((z + delta).toFixed(1)), 1.0, 3.0));
+  };
+  const onWheelZoomPortrait = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    setPortraitZoom((z) => clamp(Number((z + delta).toFixed(1)), 1.0, 3.0));
   };
 
-  const onCapture = () => {
-    console.log("Capture");
+  const toggleZoomPresetLandscape = () => {
+    setLandscapeZoom((z) => {
+      if (z < 1.2) return 1.4;
+      if (z < 1.8) return 2.0;
+      return 1.0;
+    });
+  };
+  const toggleZoomPresetPortrait = () => {
+    setPortraitZoom((z) => {
+      if (z < 1.2) return 1.4;
+      if (z < 1.8) return 2.0;
+      return 1.0;
+    });
   };
 
-  const onGallery = () => {
-    console.log("Gallery");
+  const startRecording = () => {
+    const lc = landscapeCanvasRef.current;
+    const pc = portraitCanvasRef.current;
+    if (!lc || !pc) return;
+
+    chunksLandscapeRef.current = [];
+    chunksPortraitRef.current = [];
+
+    const ls = lc.captureStream(30);
+    const ps = pc.captureStream(30);
+
+    // If you want audio in both files, we can add audio track from mic stream:
+    const audioTrack = streamRef.current?.getAudioTracks?.()?.[0];
+    if (audioTrack) {
+      try {
+        ls.addTrack(audioTrack);
+      } catch {}
+      try {
+        ps.addTrack(audioTrack);
+      } catch {}
+    }
+
+    const options: MediaRecorderOptions = {};
+    // Try to pick a good mime type
+    const candidates = [
+      "video/webm;codecs=vp9,opus",
+      "video/webm;codecs=vp8,opus",
+      "video/webm",
+    ];
+    for (const c of candidates) {
+      if ((window as any).MediaRecorder?.isTypeSupported?.(c)) {
+        options.mimeType = c;
+        break;
+      }
+    }
+
+    const recL = new MediaRecorder(ls, options);
+    const recP = new MediaRecorder(ps, options);
+
+    recL.ondataavailable = (ev) => {
+      if (ev.data && ev.data.size > 0) chunksLandscapeRef.current.push(ev.data);
+    };
+    recP.ondataavailable = (ev) => {
+      if (ev.data && ev.data.size > 0) chunksPortraitRef.current.push(ev.data);
+    };
+
+    recL.onstop = () => {
+      const blob = new Blob(chunksLandscapeRef.current, {
+        type: recL.mimeType || "video/webm",
+      });
+      downloadBlob(blob, `FlipCastDuo_Landscape_${Date.now()}.webm`);
+    };
+    recP.onstop = () => {
+      const blob = new Blob(chunksPortraitRef.current, {
+        type: recP.mimeType || "video/webm",
+      });
+      downloadBlob(blob, `FlipCastDuo_Portrait_${Date.now()}.webm`);
+    };
+
+    recLandscapeRef.current = recL;
+    recPortraitRef.current = recP;
+
+    recL.start(250); // chunk every 250ms
+    recP.start(250);
+
+    setIsRecording(true);
+    setRecordSeconds(0);
+
+    if (timerRef.current) window.clearInterval(timerRef.current);
+    timerRef.current = window.setInterval(() => {
+      setRecordSeconds((s) => s + 1);
+    }, 1000);
   };
 
-  const onAccessory = () => {
-    console.log("Accessory");
+  const stopRecording = () => {
+    recLandscapeRef.current?.stop();
+    recPortraitRef.current?.stop();
+    recLandscapeRef.current = null;
+    recPortraitRef.current = null;
+
+    setIsRecording(false);
+    if (timerRef.current) window.clearInterval(timerRef.current);
+    timerRef.current = null;
   };
 
   const onRecord = () => {
-    console.log("Record");
+    if (mode !== "video") return;
+    if (!hasCamera) return;
+    if (!isRecording) startRecording();
+    else stopRecording();
   };
 
-  const onToggleMode = (mode: "video" | "photo") => {
-    console.log("Mode:", mode);
+  const capturePhotos = async () => {
+    const lc = landscapeCanvasRef.current;
+    const pc = portraitCanvasRef.current;
+    if (!lc || !pc) return;
+
+    // Landscape PNG
+    lc.toBlob((b) => {
+      if (b) downloadBlob(b, `FlipCastDuo_Landscape_${Date.now()}.png`);
+    }, "image/png");
+
+    // Portrait PNG (we record at 720×1280 internally)
+    pc.toBlob((b) => {
+      if (b) downloadBlob(b, `FlipCastDuo_Portrait_${Date.now()}.png`);
+    }, "image/png");
+  };
+
+  const onCapture = () => {
+    if (!hasCamera) return;
+    if (mode === "photo") {
+      capturePhotos();
+    } else {
+      // In video mode "Capture" can be an alias for record toggle if you want:
+      onRecord();
+    }
+  };
+
+  const onGallery = () => {
+    alert("Gallery (placeholder): wire this to your gallery view later.");
+  };
+
+  const onAccessory = () => {
+    alert("Accessory (placeholder): wire this to your accessory pairing later.");
+  };
+
+  const onCloudSync = () => {
+    alert("Cloud Sync (placeholder): wire this to your sync logic later.");
+  };
+
+  const formatTime = (s: number) => {
+    const mm = Math.floor(s / 60)
+      .toString()
+      .padStart(2, "0");
+    const ss = Math.floor(s % 60)
+      .toString()
+      .padStart(2, "0");
+    return `${mm}:${ss}`;
   };
 
   return (
     <div className="min-h-[100dvh] bg-[#0b0f18] flex items-center justify-center p-6">
-      {/* Stage frame that can resize, but content inside stays proportional */}
+      {/* hidden source video */}
+      <video
+        ref={previewVideoRef}
+        playsInline
+        muted
+        autoPlay
+        style={{ position: "absolute", width: 1, height: 1, opacity: 0 }}
+      />
+
+      {/* internal canvases (used for previews + recording) */}
+      <canvas
+        ref={landscapeCanvasRef}
+        width={1280}
+        height={720}
+        style={{ position: "absolute", width: 1, height: 1, opacity: 0 }}
+      />
+      <canvas
+        ref={portraitCanvasRef}
+        width={720}
+        height={1280}
+        style={{ position: "absolute", width: 1, height: 1, opacity: 0 }}
+      />
+
+      {/* Stage wrapper */}
       <div
         className="relative"
         style={{
@@ -222,19 +521,16 @@ export default function CapturePage() {
           height: BASE_H * scale,
         }}
       >
-        {/* Fixed 1920×1080 stage */}
         <div className="relative" style={stageStyle}>
-          {/* Background */}
           <div className="absolute inset-0 bg-[#0b0f18]" />
 
-          {/* CLOUD SYNC (top right) */}
+          {/* CLOUD SYNC */}
           <button
             onClick={onCloudSync}
             className="absolute right-[92px] top-[28px] h-[42px] px-6 rounded-full border border-[#667268] bg-white/10 text-white text-[15px] tracking-wide flex items-center gap-3"
             style={{ backdropFilter: "blur(8px)" }}
           >
             <span className="inline-block w-5 h-5">
-              {/* simple cloud icon */}
               <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5">
                 <path
                   d="M7.5 18.5h10a4 4 0 0 0 .6-7.96A5.5 5.5 0 0 0 7.3 8.7 4.3 4.3 0 0 0 7.5 18.5Z"
@@ -251,54 +547,86 @@ export default function CapturePage() {
           <div
             className="absolute left-[99px] top-[96px] rounded-[41px] border border-[#667268] overflow-hidden bg-black"
             style={{ width: 1280, height: 720 }}
+            onWheel={onWheelZoomLandscape}
+            onDoubleClick={toggleZoomPresetLandscape}
           >
+            {/* Preview is the landscape canvas stream */}
             <video
-              ref={landscapeVideoRef}
+              ref={landscapePreviewRef}
               className="w-full h-full object-cover"
               playsInline
               muted
               autoPlay
             />
-            {/* 16:9 label */}
+
+            {/* overlays */}
             <div className="absolute left-[28px] bottom-[26px] px-4 py-2 rounded-md border border-[#667268] bg-black/40 text-white text-[14px] tracking-wide">
               16:9&nbsp; LANDSCAPE
             </div>
 
-            {/* landscape zoom pill */}
-            <div className="absolute right-[28px] bottom-[26px] px-4 py-2 rounded-full border border-[#667268] bg-black/40 text-white text-[14px]">
+            <button
+              type="button"
+              onClick={() =>
+                setLandscapeZoom((z) => clamp(Number((z + 0.1).toFixed(1)), 1, 3))
+              }
+              className="absolute right-[28px] bottom-[26px] px-4 py-2 rounded-full border border-[#667268] bg-black/40 text-white text-[14px]"
+              title="Click to zoom in. Wheel also works."
+            >
               {landscapeZoom.toFixed(1)}x
-            </div>
+            </button>
+
+            {!hasCamera && (
+              <div className="absolute inset-0 flex items-center justify-center text-white/70 text-[16px]">
+                Camera unavailable
+              </div>
+            )}
           </div>
 
           {/* PORTRAIT FRAME */}
           <div
             className="absolute left-[1428px] top-[94px] rounded-[41px] border border-[#667268] overflow-hidden bg-black"
             style={{ width: 405, height: 720 }}
+            onWheel={onWheelZoomPortrait}
+            onDoubleClick={toggleZoomPresetPortrait}
           >
+            {/* We stream a 720×1280 canvas into this video,
+                then "cover" it into a 405×720 window */}
             <video
-              ref={portraitVideoRef}
+              ref={portraitPreviewRef}
               className="w-full h-full object-cover"
               playsInline
               muted
               autoPlay
             />
-            {/* portrait zoom pill (top-left) */}
-            <div className="absolute left-[22px] top-[22px] px-4 py-2 rounded-full border border-[#667268] bg-black/40 text-white text-[14px]">
-              {portraitZoom.toFixed(1)}x
-            </div>
 
-            {/* 9:16 label */}
+            <button
+              type="button"
+              onClick={() =>
+                setPortraitZoom((z) => clamp(Number((z + 0.1).toFixed(1)), 1, 3))
+              }
+              className="absolute left-[22px] top-[22px] px-4 py-2 rounded-full border border-[#667268] bg-black/40 text-white text-[14px]"
+              title="Click to zoom in. Wheel also works."
+            >
+              {portraitZoom.toFixed(1)}x
+            </button>
+
             <div className="absolute right-[22px] bottom-[26px] px-4 py-2 rounded-md border border-[#667268] bg-black/40 text-white text-[14px] tracking-wide">
               9:16&nbsp; PORTRAIT
             </div>
+
+            {!hasCamera && (
+              <div className="absolute inset-0 flex items-center justify-center text-white/70 text-[16px]">
+                Camera unavailable
+              </div>
+            )}
           </div>
 
-          {/* LOGO (bottom-left) — bigger, no panel */}
+          {/* LOGO */}
           <div className="absolute left-[92px] top-[860px]">
             <FlipCastLogo height={72} />
           </div>
 
-          {/* LEFT BUTTONS (Capture / Gallery / Accessory) */}
+          {/* LEFT BUTTONS */}
           <div className="absolute left-[86px] top-[972px] flex gap-5">
             <button
               onClick={onCapture}
@@ -307,6 +635,7 @@ export default function CapturePage() {
             >
               CAPTURE
             </button>
+
             <button
               onClick={onGallery}
               className="h-[56px] px-8 rounded-full border border-[#667268] bg-black/10 text-white/80 text-[15px] tracking-wide"
@@ -314,6 +643,7 @@ export default function CapturePage() {
             >
               GALLERY
             </button>
+
             <button
               onClick={onAccessory}
               className="h-[56px] px-8 rounded-full border border-[#667268] bg-black/10 text-white/80 text-[15px] tracking-wide"
@@ -323,11 +653,11 @@ export default function CapturePage() {
             </button>
           </div>
 
-          {/* MIC BUTTON (center-bottom left of toggle) */}
+          {/* MIC BUTTON (placeholder) */}
           <button
             className="absolute left-[810px] top-[855px] w-[82px] h-[82px] rounded-full border border-[#667268] bg-black/10 flex items-center justify-center"
             style={{ backdropFilter: "blur(10px)" }}
-            onClick={() => console.log("Mic")}
+            onClick={() => alert("Mic button (placeholder)")}
             aria-label="Microphone"
           >
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
@@ -351,25 +681,27 @@ export default function CapturePage() {
             </svg>
           </button>
 
-          {/* VIDEO/PHOTO TOGGLE (center-bottom) */}
+          {/* VIDEO/PHOTO TOGGLE */}
           <div
             className="absolute left-[922px] top-[855px] h-[82px] w-[455px] rounded-full border border-[#667268] bg-black/10 flex items-center justify-center gap-4 px-5"
             style={{ backdropFilter: "blur(10px)" }}
           >
             <button
-              onClick={() => onToggleMode("video")}
-              className="h-[58px] w-[210px] rounded-full bg-white text-black flex items-center justify-center gap-3 text-[15px] tracking-wide"
+              onClick={() => setMode("video")}
+              className={`h-[58px] w-[210px] rounded-full flex items-center justify-center gap-3 text-[15px] tracking-wide ${
+                mode === "video" ? "bg-white text-black" : "text-white/80"
+              }`}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                 <path
                   d="M15 10l5-3v10l-5-3v-4Z"
-                  stroke="black"
+                  stroke={mode === "video" ? "black" : "white"}
                   strokeWidth="1.8"
                   strokeLinejoin="round"
                 />
                 <path
                   d="M4 7h11v10H4V7Z"
-                  stroke="black"
+                  stroke={mode === "video" ? "black" : "white"}
                   strokeWidth="1.8"
                   strokeLinejoin="round"
                 />
@@ -378,19 +710,21 @@ export default function CapturePage() {
             </button>
 
             <button
-              onClick={() => onToggleMode("photo")}
-              className="h-[58px] w-[210px] rounded-full text-white/80 flex items-center justify-center gap-3 text-[15px] tracking-wide"
+              onClick={() => setMode("photo")}
+              className={`h-[58px] w-[210px] rounded-full flex items-center justify-center gap-3 text-[15px] tracking-wide ${
+                mode === "photo" ? "bg-white text-black" : "text-white/80"
+              }`}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                 <path
                   d="M4 8h16v11H4V8Z"
-                  stroke="white"
+                  stroke={mode === "photo" ? "black" : "white"}
                   strokeWidth="1.8"
                   strokeLinejoin="round"
                 />
                 <path
                   d="M9 8l1-2h4l1 2"
-                  stroke="white"
+                  stroke={mode === "photo" ? "black" : "white"}
                   strokeWidth="1.8"
                   strokeLinejoin="round"
                 />
@@ -398,7 +732,7 @@ export default function CapturePage() {
                   cx="12"
                   cy="13"
                   r="2.5"
-                  stroke="white"
+                  stroke={mode === "photo" ? "black" : "white"}
                   strokeWidth="1.8"
                 />
               </svg>
@@ -406,14 +740,39 @@ export default function CapturePage() {
             </button>
           </div>
 
-          {/* RECORD BUTTON (right-bottom) */}
+          {/* RECORD BUTTON */}
           <button
             onClick={onRecord}
             aria-label="Record"
             className="absolute left-[1546px] top-[845px] w-[167px] h-[167px] rounded-full border-[9px] border-white/90 bg-transparent flex items-center justify-center"
+            title={mode === "photo" ? "Switch to VIDEO to record" : "Record"}
           >
-            <div className="w-[143px] h-[143px] rounded-full bg-[#ea1d32]" />
+            <div
+              className={`w-[143px] h-[143px] rounded-full ${
+                isRecording ? "bg-[#ea1d32]" : "bg-[#ea1d32]"
+              }`}
+            />
+            {isRecording && (
+              <div className="absolute -top-10 left-1/2 -translate-x-1/2 text-white text-[14px] px-3 py-1 rounded-full border border-[#667268] bg-black/40">
+                {formatTime(recordSeconds)}
+              </div>
+            )}
           </button>
+
+          {/* Error overlay (if camera blocked) */}
+          {cameraError && (
+            <div className="absolute left-[99px] top-[96px] w-[1734px] h-[720px] flex items-center justify-center">
+              <div className="max-w-[900px] text-center text-white/85 border border-[#667268] bg-black/60 rounded-2xl px-8 py-6">
+                <div className="text-[18px] mb-2">Camera unavailable</div>
+                <div className="text-[14px] text-white/70">
+                  {cameraError}
+                  <br />
+                  If you’re on Vercel: use HTTPS (not HTTP) and allow camera/mic
+                  permissions in the browser.
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
