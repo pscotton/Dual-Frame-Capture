@@ -87,12 +87,79 @@ function drawCover(
   ctx.drawImage(video, sx, sy, sw, sh, 0, 0, outW, outH);
 }
 
+/* --- SVG icons pulled from your Illustrator export (tight viewBoxes) --- */
+function IconCloud() {
+  return (
+    <svg className="uiIcon" viewBox="1640 38 30 22" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M1656.28,40.03c2.76,0,5.87,1.85,6.15,5.91l.11,1.6,1.61.04c3.44.09,4.97,2.58,4.97,5s-1.54,4.91-4.93,5h-15.3c-2.97,0-5.38-2.41-5.38-5.38s2.28-5.27,5.19-5.38l1.46-.05.23-1.45c.61-3.91,3.44-5.3,5.89-5.3M1656.28,38.26c-3.47,0-6.92,2.2-7.64,6.8-3.83.13-6.9,3.29-6.9,7.14s3.21,7.15,7.15,7.15h15.3c8.93-.23,8.93-13.31,0-13.54-.35-4.95-4.15-7.55-7.92-7.55h.01Z"
+      />
+    </svg>
+  );
+}
+
+function IconVideo() {
+  return (
+    <svg className="uiIcon" viewBox="972 887 30 22" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M999.26,888.64c-.2-.1-.45-.1-.65.05l-4.58,3.55v-3.65c0-.35-.3-.65-.65-.65h-16.56c-1.84,0-3.33,1.49-3.33,3.33v9.5c0,1.84,1.49,3.33,3.33,3.33h16.56c.35,0,.65-.3.65-.6v-3.74l4.58,3.6c.15.1.25.15.4.15.05,0,.15-.05.25-.1.2-.1.35-.3.35-.55v-13.68c0-.25-.15-.45-.35-.55h0ZM992.79,902.87h-15.96c-1.14,0-2.09-.94-2.09-2.09v-9.5c0-1.14.94-2.09,2.09-2.09h15.96v13.68h0ZM998.41,901.57l-4.38-3.38v-4.33l4.38-3.38v11.09Z"
+      />
+    </svg>
+  );
+}
+
+function IconPhoto() {
+  return (
+    <svg className="uiIcon" viewBox="1184 883 30 26" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M1200.16,891.08c-3.43,0-6.22,2.79-6.22,6.22s2.79,6.22,6.22,6.22,6.22-2.83,6.22-6.22-2.79-6.22-6.22-6.22ZM1200.16,902.27c-2.74,0-4.97-2.24-4.97-4.97s2.24-4.97,4.97-4.97,4.97,2.24,4.97,4.97-2.24,4.97-4.97,4.97Z"
+      />
+      <path
+        fill="currentColor"
+        d="M1210.6,887.35h-2.83l-.5-1.24c-.45-1.09-1.54-1.84-2.74-1.84h-8.7c-1.24,0-2.29.7-2.74,1.84l-.5,1.24h-2.83c-1.64,0-2.98,1.34-2.98,2.98v13.78c0,1.64,1.34,2.98,2.98,2.98h20.79c1.64,0,2.98-1.34,3.03-2.98v-13.78c0-1.64-1.34-2.98-2.98-2.98h0ZM1212.29,904.11c0,.94-.8,1.74-1.74,1.74h-20.79c-.95,0-1.74-.8-1.74-1.74v-13.78c0-.94.8-1.74,1.74-1.74h3.23c.3,0,.5-.15.6-.4l.6-1.64c.3-.65.9-1.04,1.59-1.04h8.7c.7,0,1.34.4,1.59,1.04l.65,1.64c.1.25.35.4.6.4h3.23c.94,0,1.74.8,1.74,1.74v13.78h0Z"
+      />
+    </svg>
+  );
+}
+
+function IconGallery() {
+  return (
+    <svg className="uiIcon" viewBox="333 987 27 18" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M358.7,987.83h0c-.17-.17-.41-.28-.67-.28h-22.38c-.26,0-.5.11-.67.28h0c-.17.17-.28.41-.28.67v15.25c0,.26.11.5.28.67h0c.17.17.41.28.67.28h22.38c.26,0,.5-.11.67-.28h0c.17-.17.28-.41.28-.67v-15.25c0-.26-.11-.5-.28-.67ZM357.97,988.56v13.23l-6.7-6.03-.36-.32-.34.34-2.68,2.72-5.36-5.8-.34-.37-.37.34-6.11,5.7v-9.81h22.26,0ZM335.71,999.74l6.43-5.99,5.04,5.46-4.42,4.48h-7.05v-3.95ZM344.18,1003.7l6.78-6.87,7.02,6.32v.55h-13.8Z"
+      />
+      <path
+        fill="currentColor"
+        d="M354.41,994.72c.7,0,1.33-.28,1.79-.74.46-.46.74-1.09.74-1.79s-.28-1.33-.74-1.79c-.46-.46-1.09-.74-1.79-.74s-1.33.28-1.79.74c-.46.46-.74,1.09-.74,1.79s.28,1.33.74,1.79c.46.46,1.09.74,1.79.74ZM353.33,991.1c.28-.28.66-.45,1.08-.45s.8.17,1.08.45.45.66.45,1.08-.17.8-.45,1.08-.66.45-1.08.45-.8-.17-1.08-.45-.45-.66-.45-1.08.17-.8.45-1.08Z"
+      />
+    </svg>
+  );
+}
+
+function IconAccessory() {
+  return (
+    <svg className="uiIcon" viewBox="541 983 16 26" aria-hidden="true">
+      <path
+        fill="currentColor"
+        fillRule="evenodd"
+        d="M554.36,1000.17l-4.53-4.53,4.5-4.5-6.65-6.54v8.9l-3.76-3.76-1.36,1.36,4.6,4.6-4.63,4.63,1.36,1.36,3.78-3.78v8.95l6.67-6.67h0l.02-.02ZM549.43,988.85l2.3,2.35-2.3,2.3v-4.65h0ZM549.43,997.74l2.3,2.35-2.3,2.3v-4.65h0Z"
+      />
+    </svg>
+  );
+}
+
 export default function Capture() {
   const [tab, setTab] = useState<Tab>("capture");
   const [mode, setMode] = useState<Mode>("video");
 
-  const [micOn, setMicOn] = useState(true);
   const [cloudOn, setCloudOn] = useState(false);
+
+  // Placeholder (UI only) for front/back camera flip button
+  const [flipUiOn, setFlipUiOn] = useState(false);
 
   // Stage scale for responsive fit
   const [stageScale, setStageScale] = useState(1);
@@ -149,7 +216,7 @@ export default function Capture() {
             frameRate: { ideal: 30, max: 60 },
             facingMode: "user",
           },
-          audio: true,
+          audio: true, // mic always on (no mute toggle)
         });
 
         if (cancelled) {
@@ -158,10 +225,6 @@ export default function Capture() {
         }
 
         streamRef.current = stream;
-
-        // Apply mic state
-        const a = stream.getAudioTracks()[0];
-        if (a) a.enabled = micOn;
 
         // Hidden source video for canvas drawing
         if (liveVideoRef.current) {
@@ -213,14 +276,6 @@ export default function Capture() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // --- Toggle mic track on/off (recording only; previews stay muted) ---
-  useEffect(() => {
-    const s = streamRef.current;
-    if (!s) return;
-    const a = s.getAudioTracks()[0];
-    if (a) a.enabled = micOn;
-  }, [micOn]);
-
   // Close zoom panel if you click outside
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
@@ -246,9 +301,9 @@ export default function Capture() {
     const landStream = cL.captureStream(30);
     const portStream = cP.captureStream(30);
 
-    // audio track (optional)
+    // audio track (always, since mic toggle removed)
     const audioTrack = stream.getAudioTracks()[0];
-    if (audioTrack && micOn) {
+    if (audioTrack) {
       landStream.addTrack(audioTrack);
       portStream.addTrack(audioTrack);
     }
@@ -367,7 +422,9 @@ export default function Capture() {
             type="button"
             aria-label="Cloud Sync"
           >
-            <span className="cloudIcon">☁</span>
+            <span className="cloudIcon" aria-hidden="true">
+              <IconCloud />
+            </span>
             <span className="cloudText">CLOUD SYNC</span>
           </button>
 
@@ -569,6 +626,9 @@ export default function Capture() {
               type="button"
               onClick={() => setTab("capture")}
             >
+              <span className="pillIcon" aria-hidden="true">
+                <IconVideo />
+              </span>
               CAPTURE
             </button>
             <button
@@ -576,6 +636,9 @@ export default function Capture() {
               type="button"
               onClick={() => setTab("gallery")}
             >
+              <span className="pillIcon" aria-hidden="true">
+                <IconGallery />
+              </span>
               GALLERY
             </button>
             <button
@@ -583,18 +646,24 @@ export default function Capture() {
               type="button"
               onClick={() => setTab("accessory")}
             >
+              <span className="pillIcon" aria-hidden="true">
+                <IconAccessory />
+              </span>
               ACCESSORY
             </button>
           </div>
 
-          {/* Mic toggle */}
+          {/* Camera flip placeholder (UI only) — replaces mic toggle */}
           <button
-            className={`mic ${micOn ? "on" : ""}`}
+            className={`flipCam ${flipUiOn ? "on" : ""}`}
             type="button"
-            onClick={() => setMicOn((v) => !v)}
-            aria-label="Microphone"
+            onClick={() => setFlipUiOn((v) => !v)}
+            aria-label="Front/Back Camera (placeholder)"
+            title="Front/Back Camera (placeholder)"
           >
-            <span className="micIcon">🎙</span>
+            <span className="flipGlyph" aria-hidden="true">
+              ⇄
+            </span>
           </button>
 
           {/* Video/Photo toggle group */}
@@ -604,7 +673,9 @@ export default function Capture() {
               className={`modeBtn ${mode === "video" ? "active" : ""}`}
               onClick={() => setMode("video")}
             >
-              <span className="modeIcon">📹</span>
+              <span className="modeIcon" aria-hidden="true">
+                <IconVideo />
+              </span>
               <span className="modeText">VIDEO</span>
             </button>
             <button
@@ -612,7 +683,9 @@ export default function Capture() {
               className={`modeBtn ${mode === "photo" ? "active" : ""}`}
               onClick={() => setMode("photo")}
             >
-              <span className="modeIcon">📷</span>
+              <span className="modeIcon" aria-hidden="true">
+                <IconPhoto />
+              </span>
               <span className="modeText">PHOTO</span>
             </button>
           </div>
@@ -656,7 +729,8 @@ export default function Capture() {
           position:absolute;
           left:50%;
           top:50%;
-          transform-origin: top left;
+          /* IMPORTANT: centre-based origin keeps stage truly centred on resize */
+          transform-origin: 50% 50%;
           border-radius: 40px;
         }
 
@@ -666,6 +740,13 @@ export default function Capture() {
             radial-gradient(1200px 700px at 40% 30%, rgba(255,255,255,0.06), rgba(0,0,0,0)),
             radial-gradient(900px 600px at 80% 80%, rgba(0,0,0,0.35), rgba(0,0,0,0)),
             #0b0f18;
+        }
+
+        /* Shared icon sizing */
+        .uiIcon{
+          width: 18px;
+          height: 18px;
+          display:block;
         }
 
         /* Cloud button */
@@ -693,7 +774,12 @@ export default function Capture() {
           border-color: rgba(35,193,167,0.55);
           box-shadow: 0 0 0 2px rgba(35,193,167,0.18) inset;
         }
-        .cloudIcon{ font-size: 18px; opacity:0.95; }
+        .cloudIcon{
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          opacity:0.95;
+        }
         .cloudText{ transform: translateY(0.5px); }
 
         /* Frames */
@@ -847,6 +933,16 @@ export default function Capture() {
           cursor:pointer;
           backdrop-filter: blur(10px);
           box-shadow: 0 0 0 1px rgba(255,255,255,0.05) inset;
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          gap: 12px;
+        }
+        .pillIcon{
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          opacity: 0.92;
         }
         .pill.active{
           border-color: rgba(35,193,167,0.65);
@@ -856,8 +952,8 @@ export default function Capture() {
             0 10px 30px rgba(0,0,0,0.45);
         }
 
-        /* Mic */
-        .mic{
+        /* Camera Flip (placeholder) */
+        .flipCam{
           position:absolute;
           left: 809px;
           top: 855px;
@@ -873,12 +969,22 @@ export default function Capture() {
           backdrop-filter: blur(10px);
           box-shadow: 0 0 0 1px rgba(255,255,255,0.05) inset;
           z-index: 7;
+
+          /* UI-only feedback */
+          color: rgba(255,255,255,0.86);
         }
-        .mic.on{
+        .flipCam.on{
           border-color: rgba(35,193,167,0.65);
           box-shadow: 0 0 0 2px rgba(35,193,167,0.18) inset;
+          color: #fff;
         }
-        .micIcon{ font-size: 26px; opacity: 0.95; }
+        .flipGlyph{
+          font-size: 26px;
+          font-weight: 900;
+          opacity: 0.95;
+          transform: translateY(-1px);
+          user-select:none;
+        }
 
         /* Video/Photo toggle group */
         .modeWrap{
@@ -918,7 +1024,15 @@ export default function Capture() {
           border-color: rgba(255,255,255,0.65);
           box-shadow: 0 10px 26px rgba(0,0,0,0.35);
         }
-        .modeIcon{ font-size: 18px; transform: translateY(-0.5px); }
+        .modeIcon{
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          opacity: 0.95;
+        }
+        .modeBtn.active .modeIcon{
+          opacity: 1;
+        }
         .modeText{ transform: translateY(0.5px); }
 
         /* Big red button */
