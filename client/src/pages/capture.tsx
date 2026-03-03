@@ -36,9 +36,8 @@ function pickMimeType(): string | undefined {
 }
 
 /**
- * Cinematic helper:
- * - zoom >= 1: cover crop (your original behaviour)
- * - zoom < 1 : fit (zoomed out) + blurred background fill
+ * Draw helpers: centre-crop the source video to a target aspect ratio, with zoom.
+ * zoom = 1.0 means normal. 2.0 means zoomed in (crop tighter).
  */
 function drawCover(
   ctx: CanvasRenderingContext2D,
@@ -51,66 +50,12 @@ function drawCover(
   const vh = video.videoHeight || 0;
   if (!vw || !vh) return;
 
-  const z = Math.max(0.3, Math.min(3, zoom)); // clamp 0.3..3
+  const z = Math.max(1, Math.min(3, zoom)); // clamp 1..3
 
   const targetAspect = outW / outH;
   const srcAspect = vw / vh;
 
-  ctx.clearRect(0, 0, outW, outH);
-
-  // ---- Cinematic zoom-out (z < 1): FIT + blurred background fill ----
-  if (z < 1) {
-    // Background (cover) — blurred
-    ctx.save();
-    ctx.filter = "blur(18px)";
-    ctx.globalAlpha = 0.9;
-
-    let bSx = 0,
-      bSy = 0,
-      bSw = vw,
-      bSh = vh;
-
-    if (srcAspect > targetAspect) {
-      bSw = Math.round(vh * targetAspect);
-      bSx = Math.round((vw - bSw) / 2);
-    } else {
-      bSh = Math.round(vw / targetAspect);
-      bSy = Math.round((vh - bSh) / 2);
-    }
-
-    ctx.drawImage(video, bSx, bSy, bSw, bSh, 0, 0, outW, outH);
-    ctx.restore();
-
-    // Subtle dark overlay to keep it cinematic
-    ctx.save();
-    ctx.globalAlpha = 0.18;
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, outW, outH);
-    ctx.restore();
-
-    // Foreground (fit) — zoom-out by shrinking inside the frame
-    const scaleFit = Math.min(outW / vw, outH / vh) * z;
-    const dw = vw * scaleFit;
-    const dh = vh * scaleFit;
-    const dx = (outW - dw) / 2;
-    const dy = (outH - dh) / 2;
-
-    ctx.save();
-    ctx.filter = "none";
-    ctx.globalAlpha = 1;
-    ctx.drawImage(video, 0, 0, vw, vh, dx, dy, dw, dh);
-
-    // Tiny top/bottom fade
-    ctx.globalAlpha = 0.12;
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, outW, 18);
-    ctx.fillRect(0, outH - 18, outW, 18);
-    ctx.restore();
-
-    return;
-  }
-
-  // ---- Normal + zoom-in (z >= 1): your original COVER crop ----
+  // Base crop to match aspect ratio first
   let sx = 0,
     sy = 0,
     sw = vw,
@@ -124,6 +69,7 @@ function drawCover(
     sy = Math.round((vh - sh) / 2);
   }
 
+  // Apply zoom by shrinking crop window around centre
   const cx = sx + sw / 2;
   const cy = sy + sh / 2;
 
@@ -133,9 +79,11 @@ function drawCover(
   sx = Math.round(cx - sw / 2);
   sy = Math.round(cy - sh / 2);
 
+  // Safety clamp
   sx = Math.max(0, Math.min(vw - sw, sx));
   sy = Math.max(0, Math.min(vh - sh, sy));
 
+  ctx.clearRect(0, 0, outW, outH);
   ctx.drawImage(video, sx, sy, sw, sh, 0, 0, outW, outH);
 }
 
@@ -507,7 +455,7 @@ export default function Capture() {
                 <input
                   className="zoomSlider"
                   type="range"
-                  min={0.3}
+                  min={1}
                   max={3}
                   step={0.05}
                   value={zoomLand}
@@ -542,7 +490,7 @@ export default function Capture() {
                 <input
                   className="zoomSlider"
                   type="range"
-                  min={0.3}
+                  min={1}
                   max={3}
                   step={0.05}
                   value={zoomPort}
